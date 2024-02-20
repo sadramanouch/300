@@ -5,23 +5,20 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include "a2.h"
+#include <arpa/inet.h> 
+#include <netinet/in.h> 
+#include <sys/socket.h> 
 
 #define MAX_MESSAGE_SIZE 1024
 #define SERVER_PORT 12345
-
-struct Node{
-    char message[MAX_MESSAGE_SIZE];
-    struct Node* next;
-};
-
-struct List{
-    struct Node* head;
-};
 
 struct List sharedList;
 
 pthread_mutex_t listMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t listCond = PTHREAD_COND_INITIALIZER;
+
+int programRunning = 1; // Global variable to control program execution
 
 void initList(struct List* list){
     list->head = NULL;
@@ -30,26 +27,27 @@ void initList(struct List* list){
 void pushMessage(struct List* list, const char* message){
     pthread_mutex_lock(&listMutex);
 
-    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
-    strncpy(newNode->message, message, MAX_MESSAGE_SIZE);
-    newNode->next = list->head;
-    list->head = newNode;
+    if (programRunning) {
+        char* messageCopy = strdup(message);
+        List_prepend(list, messageCopy);
+        pthread_cond_signal(&listCond);
+    }
 
-    pthread_cond_signal(&listCond);
     pthread_mutex_unlock(&listMutex);
 }
 
 void popMessage(struct List* list, char* message){
     pthread_mutex_lock(&listMutex);
 
-    while (list->head == NULL){
+    while (programRunning && List_count(list) == 0){
         pthread_cond_wait(&listCond, &listMutex);
     }
 
-    struct Node* temp = list->head;
-    list->head = temp->next;
-    strncpy(message, temp->message, MAX_MESSAGE_SIZE);
-    free(temp);
+    if (programRunning) {
+        char* poppedMessage = (char*)List_trim(list);
+        strncpy(message, poppedMessage, MAX_MESSAGE_SIZE);
+        free(poppedMessage);
+    }
 
     pthread_mutex_unlock(&listMutex);
 }
@@ -125,15 +123,19 @@ void* keyboardInputThread(void* arg){
         printf("Type a message: ");
         fgets(input, sizeof(input), stdin);
 
-        //Check for exit condition
+        // Check for exit condition
         if (strcmp(input, "exit\n") == 0){
+            pthread_mutex_lock(&listMutex);
+            programRunning = 0; // Set programRunning to 0 to signal threads to exit
+            pthread_cond_broadcast(&listCond); // Signal all threads to wake up
+            pthread_mutex_unlock(&listMutex);
             break;
         }
 
-        //Remove newline character
+        // Remove newline character
         input[strcspn(input, "\n")] = '\0';
 
-        //Add message to the shared list
+        // Add message to the shared list
         pushMessage(&sharedList, input);
     }
 

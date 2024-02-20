@@ -25,9 +25,6 @@ struct List{
 extern pthread_mutex_t listMutex;
 extern pthread_cond_t listCond;
 
-//Shared list of messages
-extern struct List sharedList;
-
 //Function prototypes
 void initList(struct List* list);
 void pushMessage(struct List* list, const char* message);
