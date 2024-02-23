@@ -24,10 +24,7 @@ struct sockaddr_in serverAddress;
 
 int programRunning = 1; // Global variable to control program execution
 
-void init_serverSocket() {
-    // Define SERVER_PORT if not already defined
-    #define SERVER_PORT 12345
-
+void init_serverSocket(const char* machineName, int remotePort) {
     // Create socket
     serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
     if (serverSocket == -1) {
@@ -39,8 +36,14 @@ void init_serverSocket() {
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = INADDR_ANY;
-    serverAddress.sin_port = htons(SERVER_PORT);
+    serverAddress.sin_port = htons(SERVER_PORT);  // Use your predefined SERVER_PORT
 
+    // Set up remote server address
+    memset(&remoteServerAddress, 0, sizeof(remoteServerAddress));
+    remoteServerAddress.sin_family = AF_INET;
+    remoteServerAddress.sin_addr.s_addr = inet_addr(remoteMachine);
+    remoteServerAddress.sin_port = htons(remotePort);
+    
     // Bind the socket
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
         perror("Error binding socket");
@@ -79,6 +82,7 @@ void* keyboardInputFunction(void* arg) {
 }
 
 void* udpSendFunction(void* arg) {
+
     while (1) {
         pthread_mutex_lock(&outgoingListMutex);
         while (List_count(outgoing_messages) == 0 && programRunning) {
@@ -154,14 +158,18 @@ int main(int argc, char* argv[]) {
     outgoing_messages = List_create();
     incoming_messages = List_create();
 
+    int myPort = atoi(argv[1]);
+    const char* remoteMachine = argv[2];
+    int remotePort = atoi(argv[3]);
+
     // Create a socket for communication
-    init_serverSocket();
+    init_serverSocket(remoteMachine, remotePort);
 
     // Start threads
     pthread_t keyboardInputThread, udpSendThread, udpReceiveThread, screenOutputThread;
     pthread_create(&keyboardInputThread, NULL, keyboardInputFunction, NULL);
-    pthread_create(&udpSendThread, NULL, udpSendFunction, NULL);
-    pthread_create(&udpReceiveThread, NULL, udpReceiveFunction, NULL);
+    pthread_create(&udpSendThread, NULL, udpSendFunction, (void*)argv);
+    pthread_create(&udpReceiveThread, NULL, udpReceiveFunction, (void*)argv);
     pthread_create(&screenOutputThread, NULL, screenOutputFunction, NULL);
 
     // Wait for exit signal
