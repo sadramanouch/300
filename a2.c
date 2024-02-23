@@ -11,51 +11,20 @@
 #include <netinet/in.h> 
 #include <sys/socket.h> 
 
-#define MAX_MESSAGE_SIZE 1024
-#define SERVER_PORT 12345
+pthread_mutex_t outgoingListMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t outgoingListCond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t incomingListMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t incomingListCond = PTHREAD_COND_INITIALIZER;
 
-struct List sharedList;
+List* outgoing_messages;
+List* incoming_messages;
 
-pthread_mutex_t listMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t listCond = PTHREAD_COND_INITIALIZER;
+int serverSocket;
+struct sockaddr_in serverAddress;
 
 int programRunning = 1; // Global variable to control program execution
 
-void initList(struct List* list) {
-    list->head = NULL;
-}
-
-void pushMessage(struct List* list, const char* message) {
-    pthread_mutex_lock(&listMutex);
-
-    if (programRunning) {
-        char* messageCopy = strdup(message);
-        List_prepend(list, messageCopy);
-        pthread_cond_signal(&listCond);
-    }
-
-    pthread_mutex_unlock(&listMutex);
-}
-
-void popMessage(struct List* list, char* message) {
-    pthread_mutex_lock(&listMutex);
-
-    while (programRunning && List_count(list) == 0) {
-        pthread_cond_wait(&listCond, &listMutex);
-    }
-
-    if (programRunning) {
-        char* poppedMessage = (char*)List_trim(list);
-        strncpy(message, poppedMessage, MAX_MESSAGE_SIZE);
-        free(poppedMessage);
-    }
-
-    pthread_mutex_unlock(&listMutex);
-}
-
-int createSocket() {
-    int serverSocket;
-    struct sockaddr_in serverAddress;
+void init_serverSocket() {
 
     //Create socket
     serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
@@ -77,38 +46,13 @@ int createSocket() {
         exit(EXIT_FAILURE);
     }
 
-    return serverSocket;
-}
-
-void sendMessage(const char* ipAddress, int port, const char* message) {
-    int clientSocket;
-    struct sockaddr_in clientAddress;
-
-    //Create socket
-    clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (clientSocket == -1) {
-        perror("Error creating socket");
-        exit(EXIT_FAILURE);
-    }
-
-    //Set up client address
-    memset(&clientAddress, 0, sizeof(clientAddress));
-    clientAddress.sin_family = AF_INET;
-    clientAddress.sin_addr.s_addr = inet_addr(ipAddress);
-    clientAddress.sin_port = htons(port);
-
-    //Send the message
-    sendto(clientSocket, message, strlen(message), 0, (struct sockaddr*)&clientAddress, sizeof(clientAddress));
-
-    close(clientSocket);
 }
 
 void receiveMessage(int serverSocket, char* buffer) {
-    struct sockaddr_in clientAddress;
-    socklen_t clientAddressLen = sizeof(clientAddress);
+    socklen_t serverAddressLen = sizeof(serverAddress);
 
     //Receive message
-    ssize_t bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE, 0, (struct sockaddr*)&clientAddress, &clientAddressLen);
+    ssize_t bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE, 0, (struct sockaddr*)&serverAddress, &serverAddressLen);
     if (bytesRead == -1) {
         perror("Error receiving message");
     }
@@ -117,15 +61,15 @@ void receiveMessage(int serverSocket, char* buffer) {
     buffer[bytesRead] = '\0';
 }
 
-void* keyboardInputThread(void* arg) {
+void* keyboardInputFunction(void* arg) {
     char input[MAX_MESSAGE_SIZE];
 
     while (1) {
-        printf("Type a message: ");
+        printf("You: ");
         fgets(input, sizeof(input), stdin);
 
         // Check for exit condition
-        if (strcmp(input, "exit\n") == 0) {
+        if (strcmp(input, "!\n") == 0) {
             pthread_mutex_lock(&listMutex);
             programRunning = 0; // Set programRunning to 0 to signal threads to exit
             pthread_cond_broadcast(&listCond); // Signal all threads to wake up
@@ -143,38 +87,38 @@ void* keyboardInputThread(void* arg) {
     pthread_exit(NULL);
 }
 
-void* udpOutputThread(void* arg) {
-    int remotePort = *((int*)arg);
+void* udpSendFunction(void* arg) {
+    int remotePort = atoi((char*)arg[3]);
+    char* remoteMachine = (char*)*arg[2];
 
     while (1) {
-        char message[MAX_MESSAGE_SIZE];
-        //Get message from the shared list
-        popMessage(&sharedList, message);
+        char* message = (char*)List_trim(outgoing_messages);
 
         //Send message to the remote client using UDP
-        sendMessage("127.0.0.1", remotePort, message);
+        sendto(serverSocket, message, strlen(message), 0, (struct sockaddr*)&serverAddress, sizeof(serverAddress));
     }
 
     pthread_exit(NULL);
     return NULL;
 }
 
-void* udpOutputThread(void* arg) {
-    int remotePort = *((int*)arg);
+void* udpReceiveFunction(void* arg) {
+    socklen_t serverAddressLen = sizeof(serverAddress);
+    char buffer[MAX_MESSAGE_SIZE];
 
-    while (1) {
-        char message[MAX_MESSAGE_SIZE];
-        //Get message from the shared list
-        popMessage(&sharedList, message);
-
-        //Send message to the remote client using UDP
-        sendMessage("127.0.0.1", remotePort, message);
+    //Receive message
+    ssize_t bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE, 0, (struct sockaddr*)&serverAddress, &serverAddressLen);
+    if (bytesRead == -1) {
+        perror("Error receiving message");
     }
 
-    pthread_exit(NULL);
+    //Null-terminate the received message
+    buffer[bytesRead] = '\0';
+
+    return NULL;
 }
 
-void* screenOutputThread(void* arg) {
+void* screenOutputFunction(void* arg) {
     while (1) {
         char message[MAX_MESSAGE_SIZE];
         //Get message from the shared list
@@ -188,35 +132,43 @@ void* screenOutputThread(void* arg) {
     return NULL;
 }
 
-void* mainThread(void* arg) {
-    //Initialization code
-    initList(&sharedList);
+int main(int argc, char* argv[]) {
+    //user input for ports and machine name
+    if (argc != 4) {
+        printf("Wrong number of arguments. Please enter:\n ./s-talk [your port] [friend's machine] [friend's port]\n");
+        return -1;
+    }
+
+    //char* myPort = *argv[1];            //argv[0] will be ./s-talk
+    //char* friendsMachine = *argv[2];
+    //char* friendsPort = *argv[3];
+
+    //Initialization of lists
+    outgoing_messages = List_create();
+    incoming_messages = List_create();
 
     //Create a socket for communication
-    int serverSocket = createSocket();
+    init_serverSocket();
 
     //Start threads
-    pthread_t keyboardThread, udpOutputThread, udpInputThread, screenOutputThread;
-    pthread_create(&keyboardThread, NULL, keyboardInputThread, NULL);
-    pthread_create(&udpOutputThread, NULL, udpOutputThread, &SERVER_PORT);
-    pthread_create(&udpInputThread, NULL, udpInputThread, NULL);
-    pthread_create(&screenOutputThread, NULL, screenOutputThread, NULL);
+    pthread_t keyboardInputThread, udpSendThread, udpReceiveThread, screenOutputThread;
+    pthread_create(&keyboardInputThread, NULL, keyboardInputFunction, NULL);
+    pthread_create(&udpSendThread, NULL, udpSendFunction, (void*)argv);
+    pthread_create(&udpReceiveThread, NULL, udpReceiveFunction, (void*)argv);
+    pthread_create(&screenOutputThread, NULL, screenOutputFunction, NULL);
 
-    //Wait for threads to finish
-    pthread_join(keyboardThread, NULL);
-    pthread_join(udpOutputThread, NULL);
-    pthread_join(udpInputThread, NULL);
+    //Wait for exit signal
+    pthread_join(keyboardInputThread, NULL);
+
+    //cancel and join the other threads
+    pthread_cancel(udpSendThread)
+    pthread_cancel(udpReceiveThread)
+    pthread_cancel(screenOutputThread)
+    pthread_join(udpSendThread, NULL);
+    pthread_join(udpReceiveThread, NULL);
     pthread_join(screenOutputThread, NULL);
 
     close(serverSocket);
-
-    return NULL;
-}
-
-int main() {
-    pthread_t mainThreadId;
-    pthread_create(&mainThreadId, NULL, mainThread, NULL);
-    pthread_join(mainThreadId, NULL);
 
     return 0;
 }

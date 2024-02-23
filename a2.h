@@ -13,37 +13,22 @@
 #include <sys/socket.h>
 
 //Define constants
-#define MAX_MESSAGE_SIZE 1024
-#define SERVER_PORT 12345
-
-//Define the list ADT and related synchronization primitives
-struct Node{
-    char message[MAX_MESSAGE_SIZE];
-    struct Node* next;
-};
-
-struct List{
-    struct Node* head;
-};
+#define MAX_MESSAGE_SIZE 256
 
 //Mutex and condition variable for synchronization
-extern pthread_mutex_t listMutex;
-extern pthread_cond_t listCond;
-
-//Function prototypes
-void initList(struct List* list);
-void pushMessage(struct List* list, const char* message);
-void popMessage(struct List* list, char* message);
+extern pthread_mutex_t outgoinglistMutex;
+extern pthread_cond_t outgoinglistCond;
+extern pthread_mutex_t incominglistMutex;
+extern pthread_cond_t incominglistCond;
 
 //Socket-related functions
-int createSocket();
-void sendMessage(const char* ipAddress, int port, const char* message);
+int init_serverSocket();
 void receiveMessage(int serverSocket, char* buffer);
 
 //Thread functions
-void* keyboardInputThread(void* arg);
-void* udpOutputThread(void* arg);
-void* udpInputThread(void* arg);
-void* screenOutputThread(void* arg);
+void* keyboardInputFunction(void* arg);
+void* udpSendFunction(void* arg);
+void* udpReceiveFunction(void* arg);
+void* screenOutputFunction(void* arg);
 
 #endif //A2_H
