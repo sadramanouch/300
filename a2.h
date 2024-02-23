@@ -1,11 +1,16 @@
 #ifndef A2_H
 #define A2_H
 
+#include "a2.h"
+#include "list.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 //Define constants
 #define MAX_MESSAGE_SIZE 1024

@@ -1,3 +1,5 @@
+// a2.c
+
 #include "a2.h"
 #include "list.h"
 #include <stdio.h>
@@ -5,7 +7,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
-#include "a2.h"
 #include <arpa/inet.h> 
 #include <netinet/in.h> 
 #include <sys/socket.h> 
@@ -20,11 +21,11 @@ pthread_cond_t listCond = PTHREAD_COND_INITIALIZER;
 
 int programRunning = 1; // Global variable to control program execution
 
-void initList(struct List* list){
+void initList(struct List* list) {
     list->head = NULL;
 }
 
-void pushMessage(struct List* list, const char* message){
+void pushMessage(struct List* list, const char* message) {
     pthread_mutex_lock(&listMutex);
 
     if (programRunning) {
@@ -36,10 +37,10 @@ void pushMessage(struct List* list, const char* message){
     pthread_mutex_unlock(&listMutex);
 }
 
-void popMessage(struct List* list, char* message){
+void popMessage(struct List* list, char* message) {
     pthread_mutex_lock(&listMutex);
 
-    while (programRunning && List_count(list) == 0){
+    while (programRunning && List_count(list) == 0) {
         pthread_cond_wait(&listCond, &listMutex);
     }
 
@@ -52,13 +53,13 @@ void popMessage(struct List* list, char* message){
     pthread_mutex_unlock(&listMutex);
 }
 
-int createSocket(){
+int createSocket() {
     int serverSocket;
     struct sockaddr_in serverAddress;
 
     //Create socket
     serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (serverSocket == -1){
+    if (serverSocket == -1) {
         perror("Error creating socket");
         exit(EXIT_FAILURE);
     }
@@ -70,7 +71,7 @@ int createSocket(){
     serverAddress.sin_port = htons(SERVER_PORT);
 
     //Bind the socket
-    if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1){
+    if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
         perror("Error binding socket");
         close(serverSocket);
         exit(EXIT_FAILURE);
@@ -79,13 +80,13 @@ int createSocket(){
     return serverSocket;
 }
 
-void sendMessage(const char* ipAddress, int port, const char* message){
+void sendMessage(const char* ipAddress, int port, const char* message) {
     int clientSocket;
     struct sockaddr_in clientAddress;
 
     //Create socket
     clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (clientSocket == -1){
+    if (clientSocket == -1) {
         perror("Error creating socket");
         exit(EXIT_FAILURE);
     }
@@ -102,13 +103,13 @@ void sendMessage(const char* ipAddress, int port, const char* message){
     close(clientSocket);
 }
 
-void receiveMessage(int serverSocket, char* buffer){
+void receiveMessage(int serverSocket, char* buffer) {
     struct sockaddr_in clientAddress;
     socklen_t clientAddressLen = sizeof(clientAddress);
 
     //Receive message
     ssize_t bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE, 0, (struct sockaddr*)&clientAddress, &clientAddressLen);
-    if (bytesRead == -1){
+    if (bytesRead == -1) {
         perror("Error receiving message");
     }
 
@@ -116,7 +117,7 @@ void receiveMessage(int serverSocket, char* buffer){
     buffer[bytesRead] = '\0';
 }
 
-void* keyboardInputThread(void* arg){
+void* keyboardInputThread(void* arg) {
     char input[MAX_MESSAGE_SIZE];
 
     while (1) {
@@ -124,7 +125,7 @@ void* keyboardInputThread(void* arg){
         fgets(input, sizeof(input), stdin);
 
         // Check for exit condition
-        if (strcmp(input, "exit\n") == 0){
+        if (strcmp(input, "exit\n") == 0) {
             pthread_mutex_lock(&listMutex);
             programRunning = 0; // Set programRunning to 0 to signal threads to exit
             pthread_cond_broadcast(&listCond); // Signal all threads to wake up
@@ -142,10 +143,26 @@ void* keyboardInputThread(void* arg){
     pthread_exit(NULL);
 }
 
-void* udpOutputThread(void* arg){
+void* udpOutputThread(void* arg) {
     int remotePort = *((int*)arg);
 
-    while (1){
+    while (1) {
+        char message[MAX_MESSAGE_SIZE];
+        //Get message from the shared list
+        popMessage(&sharedList, message);
+
+        //Send message to the remote client using UDP
+        sendMessage("127.0.0.1", remotePort, message);
+    }
+
+    pthread_exit(NULL);
+    return NULL;
+}
+
+void* udpOutputThread(void* arg) {
+    int remotePort = *((int*)arg);
+
+    while (1) {
         char message[MAX_MESSAGE_SIZE];
         //Get message from the shared list
         popMessage(&sharedList, message);
@@ -157,22 +174,8 @@ void* udpOutputThread(void* arg){
     pthread_exit(NULL);
 }
 
-void* udpInputThread(void* arg){
-    int serverSocket = createSocket();
-
-    while (1){
-        char buffer[MAX_MESSAGE_SIZE];
-        receiveMessage(serverSocket, buffer);
-        //Add received message to the shared list
-        pushMessage(&sharedList, buffer);
-    }
-
-    close(serverSocket);
-    pthread_exit(NULL);
-}
-
-void* screenOutputThread(void* arg){
-    while (1){
+void* screenOutputThread(void* arg) {
+    while (1) {
         char message[MAX_MESSAGE_SIZE];
         //Get message from the shared list
         popMessage(&sharedList, message);
@@ -182,9 +185,10 @@ void* screenOutputThread(void* arg){
     }
 
     pthread_exit(NULL);
+    return NULL;
 }
 
-int main(){
+void* mainThread(void* arg) {
     //Initialization code
     initList(&sharedList);
 
@@ -194,7 +198,7 @@ int main(){
     //Start threads
     pthread_t keyboardThread, udpOutputThread, udpInputThread, screenOutputThread;
     pthread_create(&keyboardThread, NULL, keyboardInputThread, NULL);
-    pthread_create(&udpOutputThread, NULL, udpOutputThread, (void*)&SERVER_PORT);
+    pthread_create(&udpOutputThread, NULL, udpOutputThread, &SERVER_PORT);
     pthread_create(&udpInputThread, NULL, udpInputThread, NULL);
     pthread_create(&screenOutputThread, NULL, screenOutputThread, NULL);
 
@@ -205,6 +209,14 @@ int main(){
     pthread_join(screenOutputThread, NULL);
 
     close(serverSocket);
+
+    return NULL;
+}
+
+int main() {
+    pthread_t mainThreadId;
+    pthread_create(&mainThreadId, NULL, mainThread, NULL);
+    pthread_join(mainThreadId, NULL);
 
     return 0;
 }
