@@ -22,7 +22,7 @@ extern pthread_mutex_t incominglistMutex;
 extern pthread_cond_t incominglistCond;
 
 //Socket-related functions
-int init_serverSocket();
+void init_serverSocket();
 void receiveMessage(int serverSocket, char* buffer);
 
 //Thread functions

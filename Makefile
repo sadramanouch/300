@@ -1,17 +1,16 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -pthread  
-TARGET = a2  
+CFLAGS = -Wall -Wextra -pthread
 
-all: $(TARGET)
+all: a2
 
-$(TARGET): a2.o main.o
-	$(CC) $(CFLAGS) -o $(TARGET) a2.o main.o
+a2: a2.o list.o
+	$(CC) $(CFLAGS) -o a2 a2.o list.o
 
-a2.o: a2.c a2.h
+a2.o: a2.c
 	$(CC) $(CFLAGS) -c a2.c
 
-main.o: main.c a2.h
-	$(CC) $(CFLAGS) -c main.c
+list.o: list.c list.h
+	$(CC) $(CFLAGS) -c list.c
 
 clean:
-	rm -f $(TARGET) *.o
+	rm -f a2 *.o
