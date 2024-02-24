@@ -12,6 +12,7 @@ List* incoming_messages;
 
 int serverSocket;
 struct sockaddr_in serverAddress;
+struct sockaddr_in remoteServerAddress;
 
 void init_serverSocket(const char* remoteMachine, int remotePort, int myPort) {
     // Create socket
@@ -28,10 +29,10 @@ void init_serverSocket(const char* remoteMachine, int remotePort, int myPort) {
     serverAddress.sin_port = htons(myPort);  // Use your predefined SERVER_PORT
 
     // Set up remote server address
-    memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_addr.s_addr = inet_addr(remoteMachine);
-    serverAddress.sin_port = htons(remotePort);
+    memset(&remoteServerAddress, 0, sizeof(remoteServerAddress));
+    remoteServerAddress.sin_family = AF_INET;
+    remoteServerAddress.sin_addr.s_addr = inet_addr(remoteMachine);
+    remoteServerAddress.sin_port = htons(remotePort);
     
     // Bind the socket
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
@@ -80,7 +81,7 @@ void* udpSendFunction(void* arg) {
         // Send message to the remote client using UDP
         if (message) {
             pthread_mutex_lock(&socketMutex);
-            sendto(serverSocket, message, strlen(message), 0, (struct sockaddr*)&serverAddress, sizeof(serverAddress));
+            sendto(serverSocket, message, strlen(message), 0, (struct sockaddr*)&remoteServerAddress, sizeof(remoteServerAddress));
             pthread_mutex_unlock(&socketMutex);
             break;
         }
