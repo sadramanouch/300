@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -pthread
 
 all: s-talk
 
-a2: a2.o list.o
+s-talk: a2.o list.o
 	$(CC) $(CFLAGS) -o s-talk a2.o list.o
 
 a2.o: a2.c
