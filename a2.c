@@ -1,20 +1,10 @@
-// a2.c
+// driver code for s-talk
 
 #include "a2.h"
 #include "list.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <arpa/inet.h> 
-#include <netinet/in.h> 
-#include <sys/socket.h> 
 
 pthread_mutex_t outgoingListMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t outgoingListCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t incomingListMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t incomingListCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t socketMutex = PTHREAD_MUTEX_INITIALIZER;
 
 List* outgoing_messages;
@@ -61,16 +51,13 @@ void* keyboardInputFunction(void* arg) {
         // Add message to the shared list
         pthread_mutex_lock(&outgoingListMutex);
         List_prepend(outgoing_messages, input);
-        pthread_cond_broadcast(&outgoingListCond);
         pthread_mutex_unlock(&outgoingListMutex);
 
         // Check for exit condition
         if (strcmp(input, "!\n\0") == 0) {
             pthread_mutex_lock(&incomingListMutex);
             List_prepend(incoming_messages, input);
-            pthread_cond_broadcast(&incomingListCond);
             pthread_mutex_unlock(&incomingListMutex);
-            break;
         }
     }
 
@@ -80,18 +67,20 @@ void* keyboardInputFunction(void* arg) {
 void* udpSendFunction(void* arg) {
 
     while (1) {
-        pthread_mutex_lock(&outgoingListMutex);
-        while (List_count(outgoing_messages) == 0) {
-            pthread_cond_wait(&outgoingListCond, &outgoingListMutex);
-        }
 
+        //get message from list
+        pthread_mutex_lock(&outgoingListMutex);
         char* message = (char*)List_trim(outgoing_messages);
         pthread_mutex_unlock(&outgoingListMutex);
 
         // Send message to the remote client using UDP
-        pthread_mutex_lock(&socketMutex);
-        sendto(serverSocket, message, strlen(message), 0, (struct sockaddr*)&serverAddress, sizeof(serverAddress));
-        pthread_mutex_unlock(&socketMutex);
+        if (message) {
+            pthread_mutex_lock(&socketMutex);
+            sendto(serverSocket, message, strlen(message), 0, (struct sockaddr*)&serverAddress, sizeof(serverAddress));
+            pthread_mutex_unlock(&socketMutex);
+            break;
+        }
+
     }
 
     pthread_exit(NULL);
@@ -104,7 +93,7 @@ void* udpReceiveFunction(void* arg) {
     while (1) {
 
         pthread_mutex_lock(&socketMutex);
-        ssize_t bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE, 0, (struct sockaddr*)&serverAddress, &serverAddressLen);
+        ssize_t bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE-1, 0, (struct sockaddr*)&serverAddress, &serverAddressLen);
         pthread_mutex_unlock(&socketMutex);
 
         if (bytesRead == -1) {
@@ -115,7 +104,6 @@ void* udpReceiveFunction(void* arg) {
         
             pthread_mutex_lock(&incomingListMutex);
             List_prepend(incoming_messages, buffer);
-            pthread_cond_broadcast(&incomingListCond);
             pthread_mutex_unlock(&incomingListMutex);
         }
 
@@ -131,13 +119,15 @@ void* screenOutputFunction(void* arg) {
         pthread_mutex_unlock(&incomingListMutex);
 
         // Check for exit condition
-        if (message && strcmp(message, "!\n\0") == 0) {
-            break;
+        if (message) {
+            if (strcmp(message, "!\n\0") == 0) {
+                break;
+            }
+            else {
+                printf("Received: %s\n", message);
+            }
         }
-        else if (message) {
-            printf("Received: %s\n", message);
-        }
-        
+
     }
 
     pthread_exit(NULL);
@@ -164,8 +154,8 @@ int main(int argc, char* argv[]) {
     // Start threads
     pthread_t keyboardInputThread, udpSendThread, udpReceiveThread, screenOutputThread;
     pthread_create(&keyboardInputThread, NULL, keyboardInputFunction, NULL);
-    pthread_create(&udpSendThread, NULL, udpSendFunction, (void*)argv);
-    pthread_create(&udpReceiveThread, NULL, udpReceiveFunction, (void*)argv);
+    pthread_create(&udpSendThread, NULL, udpSendFunction, NULL);
+    pthread_create(&udpReceiveThread, NULL, udpReceiveFunction, NULL);
     pthread_create(&screenOutputThread, NULL, screenOutputFunction, NULL);
 
     // Wait for exit signal

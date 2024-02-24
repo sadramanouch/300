@@ -22,8 +22,7 @@ extern pthread_mutex_t incominglistMutex;
 extern pthread_cond_t incominglistCond;
 
 //Socket-related functions
-void init_serverSocket();
-void receiveMessage(int serverSocket, char* buffer);
+void init_serverSocket(const char* remoteMachine, int remotePort, int myPort);
 
 //Thread functions
 void* keyboardInputFunction(void* arg);
