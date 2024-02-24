@@ -15,7 +15,7 @@ struct sockaddr_in serverAddress;
 
 void init_serverSocket(const char* remoteMachine, int remotePort, int myPort) {
     // Create socket
-    serverSocket = socket(AF_INET6, SOCK_DGRAM, 0);
+    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
     if (serverSocket == -1) {
         perror("Error creating socket");
         exit(EXIT_FAILURE);
@@ -23,13 +23,13 @@ void init_serverSocket(const char* remoteMachine, int remotePort, int myPort) {
 
     // Set up server address
     memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET6;
+    serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = INADDR_ANY;
     serverAddress.sin_port = htons(myPort);  // Use your predefined SERVER_PORT
 
     // Set up remote server address
     memset(&serverAddress, 0, sizeof(serverAddress));
-    serverAddress.sin_family = AF_INET6;
+    serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = inet_addr(remoteMachine);
     serverAddress.sin_port = htons(remotePort);
     
@@ -42,6 +42,8 @@ void init_serverSocket(const char* remoteMachine, int remotePort, int myPort) {
 }
 
 void* keyboardInputFunction(void* arg) {
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
     char input[MAX_MESSAGE_SIZE];
 
     while (1) {
@@ -66,6 +68,7 @@ void* keyboardInputFunction(void* arg) {
 }
 
 void* udpSendFunction(void* arg) {
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
     while (1) {
 
@@ -88,13 +91,15 @@ void* udpSendFunction(void* arg) {
 }
 
 void* udpReceiveFunction(void* arg) {
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
     socklen_t serverAddressLen = sizeof(serverAddress);
     char buffer[MAX_MESSAGE_SIZE];
 
     while (1) {
 
         pthread_mutex_lock(&socketMutex);
-        ssize_t bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE-1, 0, (struct sockaddr*)&serverAddress, &serverAddressLen);
+        ssize_t bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE, 0, (struct sockaddr*)&serverAddress, &serverAddressLen);
         pthread_mutex_unlock(&socketMutex);
 
         if (bytesRead == -1) {
@@ -114,6 +119,8 @@ void* udpReceiveFunction(void* arg) {
 }
 
 void* screenOutputFunction(void* arg) {
+    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
     while (1) {
         pthread_mutex_lock(&incomingListMutex);
         char* message = (char*)List_trim(incoming_messages);
@@ -158,9 +165,6 @@ int main(int argc, char* argv[]) {
     pthread_create(&udpSendThread, NULL, udpSendFunction, NULL);
     pthread_create(&udpReceiveThread, NULL, udpReceiveFunction, NULL);
     pthread_create(&screenOutputThread, NULL, screenOutputFunction, NULL);
-
-    //set thread cancellation types
-
 
     // Wait for exit signal
     pthread_join(screenOutputThread, NULL);
