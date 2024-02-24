@@ -26,13 +26,18 @@ void init_serverSocket(const char* remoteMachine, int remotePort, int myPort) {
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = INADDR_ANY;
-    serverAddress.sin_port = htons(myPort);  // Use your predefined SERVER_PORT
+    serverAddress.sin_port = htons(myPort); 
 
     // Set up remote server address
     memset(&remoteServerAddress, 0, sizeof(remoteServerAddress));
     remoteServerAddress.sin_family = AF_INET;
     remoteServerAddress.sin_addr.s_addr = inet_addr(remoteMachine);
     remoteServerAddress.sin_port = htons(remotePort);
+
+    #ifdef DEBUG
+        printf("Remote Server Address: %s:%d\n", inet_ntoa(remoteServerAddress.sin_addr), ntohs(remoteServerAddress.sin_port));
+    #endif
+
     
     // Bind the socket
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
@@ -40,6 +45,10 @@ void init_serverSocket(const char* remoteMachine, int remotePort, int myPort) {
         close(serverSocket);
         exit(EXIT_FAILURE);
     }
+
+    #ifdef DEBUG
+        printf("Socket and bind operations successful.\n");
+    #endif
 }
 
 void* keyboardInputFunction(void* arg) {
@@ -156,6 +165,12 @@ int main(int argc, char* argv[]) {
     int myPort = atoi(argv[1]);
     const char* remoteMachine = argv[2];
     int remotePort = atoi(argv[3]);
+
+    #ifdef DEBUG
+        printf("My Port: %d\n", myPort);
+        printf("Remote Machine: %s\n", remoteMachine);
+        printf("Remote Port: %d\n", remotePort);
+    #endif
 
     // Create a socket for communication
     init_serverSocket(remoteMachine, remotePort, myPort);
