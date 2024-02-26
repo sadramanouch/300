@@ -30,52 +30,6 @@ char* localPort;
 char* remoteMachine;
 char* remotePort;
 
-void* init_serverSocket(void* arg) {
-    // Create socket
-    int serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (serverSocket < 0) {
-        perror("Error creating socket");
-        exit(EXIT_FAILURE);
-    }
-    
-    //sending requirements
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_DGRAM;
-
-    int addressStatus = getaddrinfo(remoteMachine, remotePort, &hints, &res);
-    if (addressStatus != 0) {
-        perror("Address or port error");
-        exit(EXIT_FAILURE);
-    }
-
-    //receiveing requirements
-    memset(&localAddress, 0, sizeof(localAddress));
-    localAddress.sin_family = AF_INET;
-    localAddress.sin_port = htons(atoi(localPort));
-    localAddress.sin_addr.s_addr = INADDR_ANY;
-
-    // Bind the socket
-    if (bind(serverSocket, (struct sockaddr*)&localAddress, sizeof(struct sockaddr_in)) < 0) {
-        perror("Error binding socket");
-        close(serverSocket);
-        exit(EXIT_FAILURE);
-    }
-
-    /* sento and recvfrom tests
-    sleep(5);
-    char* message = "hi\n\0";
-    int bytes_sent = sendto(serverSocket, message, strlen(message), 0, (struct sockaddr*)res->ai_addr, res->ai_addrlen);
-    printf("sent msg %d\n", bytes_sent);
-
-    struct sockaddr_in sinRemote;
-    unsigned int sin_len = sizeof(sinRemote);
-    char buffer[MAX_MESSAGE_SIZE];
-    int bytesRx = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE, 0, (struct sockaddr*)&sinRemote, &sin_len);
-    printf("received msg: %s", buffer);
-    */
-}
-
 void* keyboardInputFunction(void* arg) {
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
@@ -93,6 +47,7 @@ void* keyboardInputFunction(void* arg) {
         if (strcmp(input, "!\n\0") == 0) {
             pthread_mutex_lock(&incomingListMutex);
             List_prepend(incoming_messages, input);
+            pthread_cond_signal(&incomingListCond);
             pthread_mutex_unlock(&incomingListMutex);
             break;
         }
@@ -102,7 +57,6 @@ void* keyboardInputFunction(void* arg) {
 }
 
 void* udpSendFunction(void* arg) {
-    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
     int sendSocket = socket(AF_INET, SOCK_DGRAM, 0);
     if (sendSocket < 0) {
@@ -120,14 +74,12 @@ void* udpSendFunction(void* arg) {
         perror("Address or port error");
         exit(EXIT_FAILURE);
     }
-    
 
     while (1) {
 
         //get message from list
         pthread_mutex_lock(&outgoingListMutex);
         while (List_count(outgoing_messages) == 0) {
-            printf("send 2\n");
             pthread_cond_wait(&outgoingListCond, &outgoingListMutex);
         }
         char* message = (char*)List_trim(outgoing_messages);
@@ -135,8 +87,7 @@ void* udpSendFunction(void* arg) {
 
         // Send message to the remote client using UDP
         if (message) {
-            int bytesSent = sendto(sendSocket, message, strlen(message), 0, (struct sockaddr*)res->ai_addr, res->ai_addrlen);
-            printf("bytes sent: %d\n", bytesSent);
+            sendto(sendSocket, message, strlen(message), 0, (struct sockaddr*)res->ai_addr, res->ai_addrlen);
             free(message);
         }
 
@@ -147,34 +98,34 @@ void* udpSendFunction(void* arg) {
 
 void* udpReceiveFunction(void* arg) {
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
-    printf("recv 1\n");
+
     int serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
     if (serverSocket < 0) {
         perror("Error creating socket");
         exit(EXIT_FAILURE);
     }
-    printf("recv 1\n");
+
     //receiveing requirements
     memset(&localAddress, 0, sizeof(localAddress));
     localAddress.sin_family = AF_INET;
     localAddress.sin_port = htons(atoi(localPort));
     localAddress.sin_addr.s_addr = INADDR_ANY;
-    printf("recv 1\n");
+
     // Bind the socket
     if (bind(serverSocket, (struct sockaddr*)&localAddress, sizeof(struct sockaddr_in)) < 0) {
         perror("Error binding socket");
         close(serverSocket);
         exit(EXIT_FAILURE);
     }
-    printf("recv 1\n");
+
     struct sockaddr_in remoteAddress;
     socklen_t addressLength = sizeof(remoteAddress);
 
     while (1) {
         char* buffer = malloc(MAX_MESSAGE_SIZE * sizeof(char));
-        printf("recv 2\n");
+
         int bytesRead = recvfrom(serverSocket, buffer, MAX_MESSAGE_SIZE-1, 0, (struct sockaddr*)&remoteAddress, &addressLength);
-        printf("recv 3\n");
+
         if (bytesRead == -1) {
             perror("Error receiving message");
         }
@@ -183,7 +134,6 @@ void* udpReceiveFunction(void* arg) {
         
             pthread_mutex_lock(&incomingListMutex);
             List_prepend(incoming_messages, buffer);
-            printf("recv 4\n");
             pthread_cond_signal(&incomingListCond);
             pthread_mutex_unlock(&incomingListMutex);
         }
@@ -194,26 +144,24 @@ void* udpReceiveFunction(void* arg) {
 }
 
 void* screenOutputFunction(void* arg) {
-    pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+    _Bool shutdown = 0;
 
-    while (1) {
+    while (!shutdown) {
 
         pthread_mutex_lock(&incomingListMutex);
         while (List_count(incoming_messages) == 0) {
-            printf("screen 2\n");
             pthread_cond_wait(&incomingListCond, &incomingListMutex);
         }
         char* message = (char*)List_trim(incoming_messages);
         pthread_mutex_unlock(&incomingListMutex);
-        printf("screen 3\n");
+
         if (message) {
 
             printf("Received: ");
-            puts(message);
-            printf("screen 4\n");
+            fputs(message, stdout);
+
             if (strcmp(message, "!\n\0") == 0) { //check for exit condition
-                free(message);
-                break;
+                shutdown = 1;
             }
             free(message);
         }
@@ -230,7 +178,7 @@ void freeItem(void* pItem) {
 int main(int argc, char* argv[]) {
     // user input for ports and machine name
     if (argc != 4) {
-        printf("Wrong number of arguments. Please enter:\n ./s-talk [your port] [friend's machine] [friend's port]\n");
+        printf("Wrong number of arguments. Please enter:\n ./s-talk [your port] [friend's machine/address] [friend's port]\n");
         return -1;
     }
 
@@ -242,14 +190,9 @@ int main(int argc, char* argv[]) {
     remoteMachine = argv[2];
     remotePort = argv[3];
 
-    printf("myport = %s\n", localPort);
-    printf("remotemachine = %s\n", remoteMachine);
-    printf("remoteport = %s\n", remotePort);
-
-    // Create a socket for communication
-
-    //pthread_t socketThread;
-    //pthread_create(&socketThread, NULL, init_serverSocket, NULL);
+    printf("YOUR PORT: %s\n", localPort);
+    printf("REMOTE ADDRESS = %s\n", remoteMachine);
+    printf("REMOTE PORT = %s\n\n", remotePort);
 
     // Start threads
     pthread_t keyboardInputThread, udpSendThread, udpReceiveThread, screenOutputThread;
