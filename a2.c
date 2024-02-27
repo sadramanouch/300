@@ -35,7 +35,7 @@ void* keyboardInputFunction(void* arg) {
 
     while (1) {
         char* input = malloc(MAX_MESSAGE_SIZE * sizeof(char));
-        fgets(input, sizeof(input), stdin);
+        fgets(input, MAX_MESSAGE_SIZE, stdin);
 
         // Add message to the shared list
         pthread_mutex_lock(&outgoingListMutex);
@@ -90,9 +90,12 @@ void* udpSendFunction(void* arg) {
             sendto(sendSocket, message, strlen(message), 0, (struct sockaddr*)res->ai_addr, res->ai_addrlen);
             free(message);
         }
-
+        if (strcmp(message, "!\n") == 0) {
+            free(message);
+            break;
+        }
     }
-
+    close(sendSocket);
     pthread_exit(NULL);
 }
 
@@ -138,8 +141,11 @@ void* udpReceiveFunction(void* arg) {
             pthread_mutex_unlock(&incomingListMutex);
         }
 
+        if (strcmp(buffer, "!\n") == 0) {
+            break;
+        }
     }
-
+    close(serverSocket);
     pthread_exit(NULL);
 }
 
@@ -173,6 +179,20 @@ void* screenOutputFunction(void* arg) {
 
 void freeItem(void* pItem) {
     free((char*)pItem);
+}
+
+void cleanup() {
+    // Destroy mutex and condition variables
+    pthread_mutex_destroy(&outgoingListMutex);
+    pthread_mutex_destroy(&incomingListMutex);
+    pthread_mutex_destroy(&socketMutex);
+    pthread_cond_destroy(&outgoingListCond);
+    pthread_cond_destroy(&incomingListCond);
+
+    // Free dynamically allocated memory
+    freeaddrinfo(res);
+    List_free(outgoing_messages, freeItem);
+    List_free(incoming_messages, freeItem);
 }
 
 int main(int argc, char* argv[]) {
@@ -215,9 +235,7 @@ int main(int argc, char* argv[]) {
 
     //clean up
     //close(serverSocket);
-    freeaddrinfo(res);
-    List_free(outgoing_messages, freeItem);
-    List_free(incoming_messages, freeItem);
+    cleanup();
 
     return 0;
 }
