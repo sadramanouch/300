@@ -35,6 +35,10 @@ void* keyboardInputFunction(void* arg) {
 
     while (1) {
         char* input = malloc(MAX_MESSAGE_SIZE * sizeof(char));
+        if (input == NULL) {
+            perror("Error allocating memory");
+            exit(EXIT_FAILURE);
+        }
         fgets(input, MAX_MESSAGE_SIZE, stdin);
 
         // Add message to the shared list
@@ -88,11 +92,10 @@ void* udpSendFunction(void* arg) {
         // Send message to the remote client using UDP
         if (message) {
             sendto(sendSocket, message, strlen(message), 0, (struct sockaddr*)res->ai_addr, res->ai_addrlen);
-            free(message);
-        }
-        if (strcmp(message, "!\n") == 0) {
-            free(message);
-            break;
+            if (strcmp(message, "!\n") == 0) {
+                free(message);
+                break;
+            }
         }
     }
     close(sendSocket);
