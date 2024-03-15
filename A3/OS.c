@@ -28,11 +28,6 @@ typedef struct {
     List *semaphore_wait_queues[5];  // Wait queues for semaphores
 } OS;
 
-typedef struct {
-    int sender_pid;
-    char message[MAX_MESSAGE_LENGTH];
-} Message;
-
 List lists[LIST_MAX_NUM_HEADS];
 Node nodes[LIST_MAX_NUM_NODES];
 
