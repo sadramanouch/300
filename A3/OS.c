@@ -50,7 +50,7 @@ void init(OS *os) {
 
     //initial process creation
     PCB init_process;
-    init_process.pid = (intptr_t)&init_process;
+    init_process.pid = (int*)(intptr_t)&init_process;
     init_process.priority = HIGH; //This could be whatever
     init_process.status = READY;
 
@@ -70,9 +70,9 @@ int create(OS *os, Priority priority) {
     }
 
     PCB new_process;
-    new_process.pid = (intptr_t)&new_process; //using intptr_t for pointer to integer
+    new_process.pid = (int*)(intptr_t)&new_process; //using intptr_t for pointer to integer
     new_process.priority = priority;
-    new_process.status = READY;
+    new_process.status = RUNNING;
 
     List* newQueue = os->queues[priority];
     if (!newQueue) {
@@ -90,7 +90,7 @@ int create(OS *os, Priority priority) {
     }
 
     printf("Sucess: Process created with PID %p\n", new_process.pid);
-    return new_process.pid; //success
+    return *(new_process.pid); //success
 }
 
 // Function to fork a process (create a copy) and add it to the ready queue
@@ -111,14 +111,14 @@ void forkk(OS *os) {
     }
 
     // Check if the current process is the init process
-    if (current_process->pid == (intptr_t)&current_process) {
+    if (*current_process->pid == (intptr_t)current_process) {
         printf("Failure: Forking the 'init' process is not allowed.\n");
         return;
     }
 
     //Copy the process to its queue
     PCB new_process;
-    new_process.pid = (intptr_t)&new_process;
+    new_process.pid = (int*)(intptr_t)&new_process;
     new_process.priority = current_process->priority;
     new_process.status = READY;
 
@@ -131,38 +131,24 @@ void forkk(OS *os) {
 }
 
 // Function to kill the specified process and remove it from the system
-void kill(OS *os, int* pid) {
-
-    // Search for the process with the given PID
-    PCB *process_to_kill = NULL;
-    for (int i = 0; i < os->process_count; i++) {
-        if (os->processes[i].pid == pid) {
-            process_to_kill = &(os->processes[i]);
-            break;
-        }
-    }
-
-    if (process_to_kill == NULL) {
-        printf("Failure: Process with PID %d not found.\n", pid);
-        return;
-    }
-
-    // Remove the process from the queues and mark it as terminated
-    for (int i = 0; i < 3; i++) {
+void kill(OS *os, int target_pid) {
+    // Search for the process in all queues
+    for (int i = 0; i < 3; ++i) {
         List *queue = os->queues[i];
-        Node *current_node = queue->head;
-        while (current_node != NULL) {
-            PCB *current_process = (PCB *)current_node->item;
-            if (current_process == process_to_kill) {
-                //List_remove_at(queue, current_node); // Remove the process from the queue
-                printf("Success: Process with PID %d has been killed.\n", pid);
-                process_to_kill->status = TERMINATED; // Mark the process as terminated
+        List_first(queue);
+        while (List_curr(queue) != NULL) {
+            PCB *pcb = (PCB *) List_curr(queue);
+            if (*(pcb->pid) == target_pid) {
+                // Found the process, remove it from the queue
+                List_remove(queue);
+                printf("Process with PID %d killed.\n", target_pid);
                 return;
             }
-            current_node = current_node->next;
+            List_next(queue);
         }
     }
-    printf("Failure: Process with PID %p not found in any queue.\n", pid);
+    // Process not found
+    printf("Failure: Process with PID %d not found in any queue.\n", target_pid);
 }
 
 // Function to exit the currently running process
@@ -185,7 +171,7 @@ void exitOS(OS *os) {
     // Update the status of the current process to TERMINATED
     current_process->status = TERMINATED;
 
-    printf("Process with PID %d terminated.\n", current_process->pid);
+    printf("Process with PID %p terminated.\n", current_process->pid);
 
     // Check if all processes, including init, are terminated
     int active_processes = 0;
@@ -206,7 +192,7 @@ void exitOS(OS *os) {
             List *queue = os->queues[i];
             if (List_count(queue) > 0) {
                 PCB *next_process = ((Node *)List_first(queue))->item;
-                printf("Process with PID %d now gets control of the CPU.\n", next_process->pid);
+                printf("Process with PID %p now gets control of the CPU.\n", next_process->pid);
                 break; // Exit the loop after finding the first non-empty queue
             }
         }
@@ -232,7 +218,7 @@ void send(OS *os, int target_pid, char *msg) {
         Node *current_node = queue->head;
         while (current_node != NULL) {
             PCB *process = (PCB *)current_node->item;
-            if (process->pid == target_pid) {
+            if (*process->pid == target_pid) {
                 target_process = process;
                 break;
             }
@@ -280,7 +266,7 @@ void reply(OS *os, int reply_pid, char *reply_msg) {
     // Find the process to reply to
     PCB *reply_process = NULL;
     for (int i = 0; i < os->process_count; i++) {
-        if (os->processes[i].pid == reply_pid) {
+        if (*os->processes[i].pid == reply_pid) {
             reply_process = &(os->processes[i]);
             break;
         }
@@ -382,7 +368,7 @@ void process_info(OS *os, int pid) {
     // Find the process with the given PID
     PCB *process = NULL;
     for (int i = 0; i < os->process_count; i++) {
-        if (os->processes[i].pid == pid) {
+        if (*os->processes[i].pid == pid) {
             process = &(os->processes[i]);
             break;
         }
@@ -395,7 +381,7 @@ void process_info(OS *os, int pid) {
 
     // Display process information
     printf("Process Information:\n");
-    printf("PID: %d\n", process->pid);
+    printf("PID: %p\n", process->pid);
     printf("Priority: %d\n", process->priority);
     printf("Status: ");
     switch (process->status) {
@@ -439,7 +425,7 @@ int main() {
             printf("Enter priority (0 = high, 1 = norm, 2 = low): ");
             while (scanf("%d", &priority) != 1 || priority < 0 || priority > 2) {
                 printf("Invalid input. Priority must be 0, 1, or 2. Please try again: ");
-                int priority;
+                while (getchar() != '\n'); // Clear input buffer
             }
             create(&os, priority);
             break;
@@ -451,7 +437,7 @@ int main() {
         case 'K': {
             int* pid;
             printf("Enter PID of the process to be killed: ");
-            while (scanf("%p", &pid) != 1) {
+            while (scanf("%x", &pid) != 1) {
                 printf("Invalid input. Please enter a valid integer PID: ");
                 while (getchar() != '\n'); // Clear input buffer
             }
