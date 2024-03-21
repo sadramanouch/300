@@ -1,18 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include "list.h"
 
 
-#define MAX_PROCESSES 100
+
+#define MAX_PROCESSES 10
 #define MAX_MESSAGE_LENGTH 40
-#define MAX_SEMAPHORES 10
+#define MAX_SEMAPHORES 5
 
 typedef enum { HIGH, NORMAL, LOW } Priority;
 typedef enum { READY, BLOCKED, RUNNING, TERMINATED } Status;
 
 typedef struct {
-    int pid;
+    int* pid;
     Priority priority;
     Status status;
     char proc_message[MAX_MESSAGE_LENGTH];
@@ -22,10 +24,13 @@ typedef struct {
 typedef struct {
     PCB processes[MAX_PROCESSES];
     int process_count;
+    int INIT_PROCESS_PID;
     List* queues[3];  // Low, Medium, High priority queues
-    PCB *running_process;  // Pointer to the currently running process
+    List* sendQueue;  // processes that have sent and are waiting for a reply
+    List* recvQueue;  // processes that have called receive and are waiting
+    PCB* running_process;  // Pointer to the currently running process
     int semaphores[MAX_SEMAPHORES];
-    List *semaphore_wait_queues[5];  // Wait queues for semaphores
+    List* semaphore_wait_queues[MAX_PROCESSES];  // Wait queues for semaphores
 } OS;
 
 List lists[LIST_MAX_NUM_HEADS];
@@ -54,7 +59,7 @@ void init(OS *os) {
 
     os->processes[os->process_count++] = init_process;
 
-    printf("Success: Init process created with PID %d\n", (void *)(intptr_t)init_process.pid);
+    printf("Success: Init process created with PID %p\n", init_process.pid);
 }
 
 int create(OS *os, Priority priority) {
@@ -84,12 +89,12 @@ int create(OS *os, Priority priority) {
         os->running_process = &new_process;
     }
 
-    printf("Sucess: Process created with PID  %d\n", (void*)(intptr_t)new_process.pid);
+    printf("Sucess: Process created with PID %p\n", new_process.pid);
     return new_process.pid; //success
 }
 
 // Function to fork a process (create a copy) and add it to the ready queue
-void fork(OS *os) {
+void forkk(OS *os) {
     // Get the currently running process
     PCB *current_process = NULL;
     for (int i = 0; i < os->process_count; i++) {
@@ -122,11 +127,12 @@ void fork(OS *os) {
 
     os->processes[os->process_count++] = new_process;
 
-    printf("Scuess: Process forked with PID  %d\n", (void *)(intptr_t)new_process.pid);
+    printf("Scuess: Process forked with PID  %p\n", new_process.pid);
 }
 
 // Function to kill the specified process and remove it from the system
-void kill(OS *os, int pid) {
+void kill(OS *os, int* pid) {
+
     // Search for the process with the given PID
     PCB *process_to_kill = NULL;
     for (int i = 0; i < os->process_count; i++) {
@@ -148,7 +154,7 @@ void kill(OS *os, int pid) {
         while (current_node != NULL) {
             PCB *current_process = (PCB *)current_node->item;
             if (current_process == process_to_kill) {
-                List_remove_at(queue, current_node); // Remove the process from the queue
+                //List_remove_at(queue, current_node); // Remove the process from the queue
                 printf("Success: Process with PID %d has been killed.\n", pid);
                 process_to_kill->status = TERMINATED; // Mark the process as terminated
                 return;
@@ -156,11 +162,11 @@ void kill(OS *os, int pid) {
             current_node = current_node->next;
         }
     }
-    printf("Failure: Process with PID %d not found in any queue.\n", pid);
+    printf("Failure: Process with PID %p not found in any queue.\n", pid);
 }
 
 // Function to exit the currently running process
-void exit(OS *os) {
+void exitOS(OS *os) {
     // Find the currently running process
     PCB *current_process = NULL;
     for (int i = 0; i < os->process_count; i++) {
@@ -243,7 +249,7 @@ void send(OS *os, int target_pid, char *msg) {
     }
 
     //block sender, store message and wait for reply
-    PCB *sender_process = get_running_process(os);
+    PCB *sender_process = os->running_process;
     sender_process->status = BLOCKED;
 
     strcpy(target_process->proc_message, msg);
@@ -255,7 +261,7 @@ void send(OS *os, int target_pid, char *msg) {
 // Function to receive a message and block until one arrives
 void receive(OS *os) {
     // Assume the currently running process is receiving the message
-    PCB *receiver_process = get_running_process(os);
+    PCB *receiver_process = os->running_process;
 
     // Check if there's a message waiting for the receiver
     if (strlen(receiver_process->proc_message) == 0) {
@@ -286,7 +292,7 @@ void reply(OS *os, int reply_pid, char *reply_msg) {
     }
 
     // Unblock the sender process
-    PCB *sender_process = get_running_process(os);
+    PCB *sender_process = os->running_process;
     sender_process->status = READY;
 
     // Set the message in the reply process
@@ -297,7 +303,7 @@ void reply(OS *os, int reply_pid, char *reply_msg) {
 
 // Function to initialize a semaphore with the given ID and initial value
 void semaphore(OS *os, int semaphore_id, int initial_value) {
-    if (semaphore_id < 0 || semaphore_id >= 5) {
+    if (semaphore_id < 0 || semaphore_id >= MAX_SEMAPHORES) {
         printf("Failure: Invalid semaphore ID. It should be in the range [0, 4].\n");
         return;
     }
@@ -310,6 +316,7 @@ void semaphore(OS *os, int semaphore_id, int initial_value) {
 
 // Function to perform the P operation on a semaphore
 void semaphore_P(OS *os, int semaphore_id) {
+    /*
     // Check if semaphore_id is within valid range
     if (semaphore_id < 0 || semaphore_id >= 5) {
         printf("Failure: Invalid semaphore ID. Please enter a value between 0 and 4.\n");
@@ -321,17 +328,19 @@ void semaphore_P(OS *os, int semaphore_id) {
     // If the semaphore value becomes negative, block the process
     if (os->semaphores[semaphore_id] < 0) {
 
-        PCB *current_process = get_running_process(os);
+        PCB *current_process = os->running_process;
         current_process->status = BLOCKED;
 
         List *wait_queue = os->semaphore_wait_queues[semaphore_id];
         List_append(wait_queue, current_process);
     }
+    */
 }
 
 // Function to perform the V operation on a semaphore
 void semaphore_V(OS *os, int semaphore_id) {
-   // Check if the semaphore ID is valid
+    /*
+    // Check if the semaphore ID is valid
     if (semaphore_id < 0 || semaphore_id >= 5) {
         printf("Invalid semaphore ID. Semaphore IDs range from 0 to 4.\n");
         return;
@@ -365,6 +374,7 @@ void semaphore_V(OS *os, int semaphore_id) {
             printf("Success: Process with PID %d unblocked.\n", waiting_process->pid);
         }
     }
+    */
 }
 
 // Function to display complete state information of a process
@@ -429,19 +439,19 @@ int main() {
             printf("Enter priority (0 = high, 1 = norm, 2 = low): ");
             while (scanf("%d", &priority) != 1 || priority < 0 || priority > 2) {
                 printf("Invalid input. Priority must be 0, 1, or 2. Please try again: ");
-                while (getchar() != '\n'); // Clear input buffer
+                int priority;
             }
             create(&os, priority);
             break;
         }
         case 'F':
             printf("Forking the currently running process...\n");
-            fork(&os);
+            forkk(&os);
             break;
         case 'K': {
-            int pid;
+            int* pid;
             printf("Enter PID of the process to be killed: ");
-            while (scanf("%d", &pid) != 1) {
+            while (scanf("%p", &pid) != 1) {
                 printf("Invalid input. Please enter a valid integer PID: ");
                 while (getchar() != '\n'); // Clear input buffer
             }
@@ -450,7 +460,7 @@ int main() {
         }
         case 'E':
             printf("Exiting the currently running process...\n");
-            exit(&os);
+            exitOS(&os);
             break;
         case 'Q':
             printf("Time quantum of the running process expired...\n");
@@ -471,7 +481,7 @@ int main() {
         }
         case 'R':
             printf("Waiting to receive a message...\n");
-            recieve(&os);
+            receive(&os);
             break;
         case 'Y': {
             int reply_pid;
@@ -498,7 +508,7 @@ int main() {
                 printf("Invalid input. Please enter a valid integer initial value: ");
                 while (getchar() != '\n'); // Clear input buffer
             }
-            semaphor(&os, semaphore_id, initial_value);
+            semaphore(&os, semaphore_id, initial_value);
             break;
         }
         case 'P': {
@@ -508,7 +518,7 @@ int main() {
                 printf("Invalid input. Semaphore ID must be between 0 and 4. Please try again: ");
                 while (getchar() != '\n'); // Clear input buffer
             }
-            semaphor_P(&os, semaphore_id);
+            semaphore_P(&os, semaphore_id);
             break;
         }
         case 'V': {
