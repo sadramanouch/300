@@ -30,7 +30,7 @@ void init(OS *os) {
     os->INIT_PROCESS_PID = &init_process;
     os->running_process = &init_process;
     os->process_count = 1;
-
+    os->INIT_PROCESS_PID->Turn = false;
     List *init_queue = os->queues[init_process.priority];
     List_append(init_queue, &init_process);
 
@@ -153,6 +153,9 @@ void quantum(OS *os, bool que, bool kill_process) {
         printf("No process is currently running.\n");
         return;
     }
+    if (os->process_count == 1){
+        os->running_process = os->INIT_PROCESS_PID;
+    }
 
     // Find the priority of the currently running process
     Priority priority = os->running_process->priority;
@@ -187,7 +190,6 @@ void quantum(OS *os, bool que, bool kill_process) {
         }
     }
     
-
     PCB* next_process = NULL;
     for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
         List* higher_priority_queue = os->queues[i];
@@ -207,6 +209,9 @@ void quantum(OS *os, bool que, bool kill_process) {
                 PCB* process = (PCB*) process_node->item;
                 if (process != NULL) {
                     process->Turn = true;
+                    if (process == os->INIT_PROCESS_PID){
+                        process->Turn = false;
+                    }
                 }
                 process_node = process_node->next;
             }
