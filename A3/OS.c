@@ -93,6 +93,7 @@ void kill(OS *os, PCB* target_pid) {
         exit(EXIT_SUCCESS);
     }
     if (target_pid == os->running_process) {
+        printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
         quantum(os, false, true);
         return;
     }
@@ -172,7 +173,7 @@ void exitOS(OS *os) {
         exit(EXIT_SUCCESS);
     }
     
-    quantum(os, false, true);
+    kill(os, os->running_process);
 }
 
 // Function to handle the quantum expiry (time quantum of the running process)
@@ -545,6 +546,9 @@ void process_info(OS *os, PCB* pid) {
             break;
         }
         List_next(queue);
+    }
+    if(pid == os->running_process){
+        target_process = os->running_process;
     }
 
     if (target_process == NULL) {
