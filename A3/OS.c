@@ -5,8 +5,6 @@
 #include <stdbool.h>
 #include "OS.h"
 
-
-
 void init(OS *os) {
     //Initialize the operating system
 
@@ -27,6 +25,7 @@ void init(OS *os) {
     PCB init_process;
     init_process.priority = LOW; //This could be whatever
     init_process.status = RUNNING;
+    init_process.Turn = true;
     os->INIT_PROCESS_PID = &init_process;
     os->running_process = &init_process;
     os->process_count = 1;
@@ -47,6 +46,7 @@ void create(OS *os, Priority priority) {
     PCB new_process;
     new_process.priority = priority;
     new_process.status = READY;
+    new_process.Turn = false;
 
     // Add the new process to the appropriate ready queue based on its priority
     List *ready_queue = os->queues[priority];
@@ -76,10 +76,11 @@ void forkk(OS *os) {
     PCB new_process;
     new_process.priority = current_process->priority;
     new_process.status = READY;
+    new_process.Turn = false;
 
     // Add the new process to the appropriate ready queue based on its priority
-    List *ready_queue = os->queues[new_process->priority];
-    List_append(ready_queue, new_process);
+    List *ready_queue = os->queues[new_process.priority];
+    List_append(ready_queue, &new_process);
     os->process_count++;
 
     printf("Success: Process forked and added to the ready queue.\n");
@@ -113,6 +114,7 @@ void kill(OS *os, PCB* target_pid) {
             List_next(queue);
         }
     }
+    //semaphore queues
     for (int i = 0; i < MAX_SEMAPHORES; i++) {
         List* queue = os->semaphore_wait_queues[i];
         List_first(queue);
@@ -129,7 +131,36 @@ void kill(OS *os, PCB* target_pid) {
             List_next(queue);
         }
     }
-
+    //send queue
+    List* queue = os->sendQueue;
+    List_first(queue);
+    while (List_curr(queue) != NULL) {
+        PCB* process = (PCB*)List_curr(queue);
+        if (process == target_pid) {
+            // Found the process, remove it from the queue
+            List_remove(queue);
+            process->status = TERMINATED;
+            printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
+            os->process_count--;
+            return;
+        }
+        List_next(queue);
+    }
+    //recv queue
+    List* queue = os->recvQueue;
+    List_first(queue);
+    while (List_curr(queue) != NULL) {
+        PCB* process = (PCB*)List_curr(queue);
+        if (process == target_pid) {
+            // Found the process, remove it from the queue
+            List_remove(queue);
+            process->status = TERMINATED;
+            printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
+            os->process_count--;
+            return;
+        }
+        List_next(queue);
+    }
     // Process not found
     printf("Failure: Process with PID %x not found.\n", &target_pid);
 }
@@ -257,16 +288,45 @@ void send(OS* os, PCB* target_pid, char* msg) {
             List_next(queue);
         }
     }
+    //check send queue
+    List* queue = os->sendQueue;
+    List_first(queue);
+    while (List_curr(queue) != NULL) {
+
+        PCB* process = (PCB*)List_curr(queue);
+        if (process == target_pid) {
+            exists = true;
+            break;
+        }
+
+        List_next(queue);
+    }
+    //check recv queue
+    List* queue = os->recvQueue;
+    List_first(queue);
+    while (List_curr(queue) != NULL) {
+
+        PCB* process = (PCB*)List_curr(queue);
+        if (process == target_pid) {
+            exists = true;
+            break;
+        }
+
+        List_next(queue);
+    }
     if (exists == false) {
         printf("Faliure: target process does not exist.\n");
         return;
     }
 
+
+
     // Block sender, store message, and wait for reply
     PCB *sender_process = os->running_process;
     sender_process->status = BLOCKED;
 
-    strcpy(target_process->proc_message, msg);
+    strcpy(target_pid->proc_message, msg);
+    target_pid->sender_pid = sender_process;
     printf("Success: Message sent to process with PID %d: %s\n", target_pid, msg);
 
     printf("Waiting for reply...\n");
