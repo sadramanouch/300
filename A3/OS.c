@@ -177,85 +177,68 @@ void exitOS(OS *os) {
 
 // Function to handle the quantum expiry (time quantum of the running process)
 void quantum(OS *os, bool que, bool kill_process) {
-    //kick off current process
+    //kick off the running process
+    process = os->running_process;
+    process->Turn = false;
 
-    //logic for choosing the process based on round robin
-    if (os->running_process == NULL) {
-        printf("No process is currently running.\n");
-        return;
+    if(que){ // ready queue the process
+    	List_append(os->semaphore_wait_queues[process->priority], process);
+    	process->status = READY;
     }
-
-    // Find the priority of the currently running process
-    Priority priority = os->running_process->priority;
-
-    List* queue = os->queues[priority];
-    if (List_count(queue) == 0) {
-        printf("Error: The queue for the running process is empty.\n");
-        return;
+    else if(kill_process){
+    	process->status = TERMINATED;
     }
-
-    List_first(queue);
-    PCB* curr_process = (PCB*) List_curr(queue);
-    if (que) {
-        if (curr_process != os->running_process) {
-            printf("Error: Current process not found at the front of the queue.\n");
-            return;
-        }
-        List_remove(queue);
-
-        int result = List_append(queue, os->running_process);
-        if (result != 0) {
-            printf("Error: Failed to append the process back to the queue.\n");
-            return;
-        }
-    }
-    else{
-        if (kill_process){
-            curr_process->status = TERMINATED;
-        }
-        else{
-            curr_process->status = BLOCKED;
-        }
+    else{	//process is in a blocked queue
+    	process->status = BLOCKED;
     }
     
-    if (os->process_count == 1){
-        os->running_process = os->INIT_PROCESS_PID;
-        return;
+    //choose a new process to run
+    
+    if(os->process_count == 1){
+    	os->running_process = os->INIT_PROCESS_PID;
+    	os->running_process->status = RUNNING
+    	return;
     }
-
+    
     PCB* next_process = NULL;
-    for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
-        List* higher_priority_queue = os->queues[i];
-        List_first(higher_priority_queue);
-        PCB* process = (PCB*) List_curr(higher_priority_queue);
-        if (process && !process->Turn) {
-            next_process = process;
-            break;
-        }
-    }
-
-    if (next_process == NULL) {
+    
+    while (!next_process){
+        
         for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
-            List* curr_queue = os->queues[i];
-            Node* process_node = curr_queue->head;
-            while (process_node != NULL) {
-                PCB* process = (PCB*) process_node->item;
-                if (process != NULL) {
-                    process->Turn = false;
-                    if (process == os->INIT_PROCESS_PID){
-                        process->Turn = true;
-                    }
+            List* queue = os->queues[i];
+    	    List_first(queue);
+    	    while(List_curr(queue)){
+    		    PCB* new_process = List_curr(queue);
+    		    if (new_process && !new_process->Turn) {
+    	    		List_remove(queue);
+                	next_process = new_process;
+    	    		os->running_process = next_process;
+    	    		next_process->status = RUNNING;
+    	    		next_process->Turn = true;
+    			    printf("Success: process with PID %x is on the CPU.\n", next_process);
+                    return;
                 }
-                process_node = process_node->next;
-            }
+    	        List_next(queue);
+    	    }
+            
         }
-    } 
-    else {
-        os->running_process = next_process;
-        next_process->Turn = true;
-        printf("Time quantum of the running process expired.\n");
-        printf("Process with PID %p now gets control of the CPU.\n", (void *)os->running_process);
+    
+    	for(int i = 0; i< NUM_PROCESS_QUEUE_LEVELS; i++){
+    		List* queue = os->queues[i];
+    		List_first(queue);
+    		while(List_curr(queue)){
+    			(PCB*)List_curr(queue)->Turn = false;
+    			List_next(queue);
+    		}
+    	}
+    
+    	os-INIT_PROCESS_PID->Turn = true;
     }
+    
+    printf("ERROR: NO PROCESS ON CPU\n");
+    exit(EXIT_FALIURE);
+    return;
+
 }
 
 // Function to send a message to another process and block until a reply is received
