@@ -122,7 +122,8 @@ void kill(OS *os, PCB* target_pid) {
         exit(EXIT_SUCCESS);
     }
     if (target_pid == os->running_process) {
-        quantum()
+        quantum(os, true);
+        return;
     }
 
     // Search for the process in all queues
@@ -134,6 +135,7 @@ void kill(OS *os, PCB* target_pid) {
             if (process == target_pid) {
                 // Found the process, remove it from the queue
                 List_remove(queue);
+                process->status = TERMINATED;
                 printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
                 os->process_count--;
                 return;
@@ -141,6 +143,23 @@ void kill(OS *os, PCB* target_pid) {
             List_next(queue);
         }
     }
+    for (int i = 0; i < MAX_SEMAPHORES; i++) {
+        List* queue = os->semaphore_wait_queues[i];
+        List_first(queue);
+        while (List_curr(queue) != NULL) {
+            PCB* process = (PCB*)List_curr(queue);
+            if (process == target_pid) {
+                // Found the process, remove it from the queue
+                List_remove(queue);
+                process->status = TERMINATED;
+                printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
+                os->process_count--;
+                return;
+            }
+            List_next(queue);
+        }
+    }
+
     // Process not found
     printf("Failure: Process with PID %x not found.\n", &target_pid);
 }
@@ -151,50 +170,8 @@ void exitOS(OS *os) {
         printf("shutting down...\n");
         exit(EXIT_SUCCESS);
     }
-
-    // Find the currently running process
-    PCB *current_process = os->running_process;
-
-    // Check if the current process is the init process
-    if (current_process == os->INIT_PROCESS_PID) {
-        // If the current process is the init process, check if there are other active processes
-        int active_processes = 0;
-        for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
-            active_processes += List_count(os->queues[i]);
-        }
-        // If there are other active processes, do not exit the init process
-        if (active_processes > 1) {
-            printf("Error: Cannot exit the init process as other processes are still active.\n");
-            return;
-        }
-    }
-
-    // Update the status of the current process to TERMINATED
-    current_process->status = TERMINATED;
-
-    printf("Success: Current process exited.\n");
-
-    // Check if all processes are terminated
-    int active_processes = 0;
-    for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
-        active_processes += List_count(os->queues[i]);
-    }
-
-    // If all processes are terminated (except the init process), exit the operating system
-    if (active_processes == 0 && current_process != os->INIT_PROCESS_PID) {
-        printf("All processes terminated. Exiting the operating system.\n");
-        exit(EXIT_SUCCESS);
-    } else {
-        // Find the next process to run (assuming round-robin scheduling)
-        for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
-            List *queue = os->queues[i];
-            if (List_count(queue) > 0) {
-                os->running_process = (PCB *) List_curr(queue);
-                printf("Success: Next process scheduled and running.\n");
-                return; // Exit the loop after finding the first non-empty queue
-            }
-        }
-    }
+    
+    quantum(os, true);
 }
 
 // Function to handle the quantum expiry (time quantum of the running process)
@@ -257,27 +234,47 @@ void quantum(OS *os, bool kill_process) {
 }
 
 // Function to send a message to another process and block until a reply is received
-void send(OS *os, PCB* target_pid, char *msg) {
-    //find the target process
-    PCB *target_process = NULL;
-    for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
-        List *queue = os->queues[i];
-        List_first(queue);
-        while (List_curr(queue) != NULL) {
-            PCB *process = (PCB *) List_curr(queue);
-            if (process == target_pid) {
-                target_process = process;
-                break;
-            }
-            List_next(queue);
-        }
-        if (target_process != NULL) {
-            break;
-        }
+void send(OS* os, PCB* target_pid, char* msg) {
+    //init process cannot send
+    if (os->running_process == os->INIT_PROCESS_PID) {
+        printf("Faliure: cannot send from init process.\n");
+        return;
     }
 
-    if (target_process == NULL) {
-        printf("Failure: Process with PID %d not found.\n", target_pid);
+    //make sure the target process exists
+    bool exists = false;
+    //check ready queues
+    for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
+        List* queue = os->queues[i];
+        List_first(queue);
+        while (List_curr(queue) != NULL) {
+
+            PCB* process = (PCB*)List_curr(queue);
+            if (process == target_pid) {
+                exists = true;
+                break;
+            }
+
+            List_next(queue);
+        }
+    }
+    //check semaphore wait queues
+    for (int i = 0; i < MAX_SEMAPHORES; i++) {
+        List* queue = os->semaphore_wait_queues[i];
+        List_first(queue);
+        while (List_curr(queue) != NULL) {
+
+            PCB* process = (PCB*)List_curr(queue);
+            if (process == target_pid) {
+                exists = true;
+                break;
+            }
+
+            List_next(queue);
+        }
+    }
+    if (exists == false) {
+        printf("Faliure: target process does not exist.\n");
         return;
     }
 
