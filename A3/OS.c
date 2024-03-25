@@ -29,7 +29,7 @@ void init(OS *os) {
     os->INIT_PROCESS_PID = &init_process;
     os->running_process = &init_process;
     os->process_count = 1;
-
+    os->INIT_PROCESS_PID->Turn = false;
     List *init_queue = os->queues[init_process.priority];
     List_append(init_queue, &init_process);
 
@@ -93,7 +93,7 @@ void kill(OS *os, PCB* target_pid) {
         exit(EXIT_SUCCESS);
     }
     if (target_pid == os->running_process) {
-        quantum(os, true);
+        quantum(os, false, true);
         return;
     }
 
@@ -172,11 +172,11 @@ void exitOS(OS *os) {
         exit(EXIT_SUCCESS);
     }
     
-    quantum(os, true);
+    quantum(os, false, true);
 }
 
 // Function to handle the quantum expiry (time quantum of the running process)
-void quantum(OS *os, bool kill_process) {
+void quantum(OS *os, bool que, bool kill_process) {
     //kick off current process
 
     //logic for choosing the process based on round robin
@@ -184,17 +184,12 @@ void quantum(OS *os, bool kill_process) {
         printf("No process is currently running.\n");
         return;
     }
+    if (os->process_count == 1){
+        os->running_process = os->INIT_PROCESS_PID;
+    }
 
     // Find the priority of the currently running process
     Priority priority = os->running_process->priority;
-
-    // Move the currently running process to the end of its priority queue
-    if (kill_process == false) {
-        if (List_count(queue) == 0) {
-            printf("Error: The queue for the running process is empty.\n");
-            return;
-        }
-    }
 
     List* queue = os->queues[priority];
     if (List_count(queue) == 0) {
@@ -204,18 +199,28 @@ void quantum(OS *os, bool kill_process) {
 
     List_first(queue);
     PCB* curr_process = (PCB*) List_curr(queue);
-    if (curr_process != os->running_process) {
-        printf("Error: Current process not found at the front of the queue.\n");
-        return;
-    }
-    List_remove(queue);
+    if (que) {
+        if (curr_process != os->running_process) {
+            printf("Error: Current process not found at the front of the queue.\n");
+            return;
+        }
+        List_remove(queue);
 
-    int result = List_append(queue, os->running_process);
-    if (result != 0) {
-        printf("Error: Failed to append the process back to the queue.\n");
-        return;
+        int result = List_append(queue, os->running_process);
+        if (result != 0) {
+            printf("Error: Failed to append the process back to the queue.\n");
+            return;
+        }
     }
-
+    else{
+        if (kill_process){
+            curr_process->status = TERMINATED;
+        }
+        else{
+            curr_process->status = BLOCKED;
+        }
+    }
+    
     PCB* next_process = NULL;
     for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
         List* higher_priority_queue = os->queues[i];
@@ -235,6 +240,9 @@ void quantum(OS *os, bool kill_process) {
                 PCB* process = (PCB*) process_node->item;
                 if (process != NULL) {
                     process->Turn = true;
+                    if (process == os->INIT_PROCESS_PID){
+                        process->Turn = false;
+                    }
                 }
                 process_node = process_node->next;
             }
@@ -428,7 +436,7 @@ void semaphore_P(OS *os, int semaphore_id) {
 
         List* wait_queue = os->semaphore_wait_queues[semaphore_id];
         List_append(wait_queue, current_process);
-        quantum(os); //this should remove the current process from the CPU
+        quantum(os, false, false); //this should remove the current process from the CPU
         printf("Success: process blocked on the semaphore.\n");
     }
 }
@@ -609,7 +617,7 @@ int main() {
                 break;
             case 'Q':
                 printf("Time quantum of the running process expired...\n");
-                quantum(&os, false);
+                quantum(&os, true, false);
                 break;
             case 'S': {
                 PCB* target_pid;
