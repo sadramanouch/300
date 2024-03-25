@@ -40,7 +40,7 @@ void create(OS *os, Priority priority);
 void forkk(OS *os);
 void kill(OS *os, PCB* target_pid);
 void exitOS(OS *os);
-void quantum(OS *os, bool kill_process);
+void quantum(OS *os, bool que, bool kill_process);
 void send(OS *os, PCB* target_pid, char *msg);
 void receive(OS *os);
 void reply(OS *os, char *reply_msg);

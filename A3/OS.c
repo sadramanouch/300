@@ -476,6 +476,47 @@ void process_info(OS *os, PCB* pid) {
         }
     }
 
+    //semaphore queues
+    for (int i = 0; i < MAX_SEMAPHORES; i++){
+        List *queue = os->queues[i];
+        List_first(queue);
+        while (List_curr(queue) != NULL) {
+            PCB *process = (PCB *) List_curr(queue);
+            if (process == (PCB *) pid) {
+                target_process = process;
+                break;
+            }
+            List_next(queue);
+        }
+        if (target_process != NULL) {
+            break;
+        }
+    }
+
+    //send queue
+    List* queue = os->sendQueue;
+    List_first(queue);
+    while (List_curr(queue) != NULL) {
+        PCB *process = (PCB *) List_curr(queue);
+        if (process == (PCB *) pid) {
+            target_process = process;
+            break;
+        }
+        List_next(queue);
+    }
+
+    //recv queue
+    List* queue = os->recvQueue;
+    List_first(queue);
+    while (List_curr(queue) != NULL) {
+        PCB *process = (PCB *) List_curr(queue);
+        if (process == (PCB *) pid) {
+            target_process = process;
+            break;
+        }
+        List_next(queue);
+    }
+
     if (target_process == NULL) {
         printf("Failure: Process with PID %d not found.\n", &pid);
         return;
