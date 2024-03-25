@@ -184,9 +184,6 @@ void quantum(OS *os, bool que, bool kill_process) {
         printf("No process is currently running.\n");
         return;
     }
-    if (os->process_count == 1){
-        os->running_process = os->INIT_PROCESS_PID;
-    }
 
     // Find the priority of the currently running process
     Priority priority = os->running_process->priority;
@@ -221,12 +218,17 @@ void quantum(OS *os, bool que, bool kill_process) {
         }
     }
     
+    if (os->process_count == 1){
+        os->running_process = os->INIT_PROCESS_PID;
+        return;
+    }
+
     PCB* next_process = NULL;
     for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
         List* higher_priority_queue = os->queues[i];
         List_first(higher_priority_queue);
         PCB* process = (PCB*) List_curr(higher_priority_queue);
-        if (process != NULL && !process->Turn) {
+        if (process && !process->Turn) {
             next_process = process;
             break;
         }
@@ -239,9 +241,9 @@ void quantum(OS *os, bool que, bool kill_process) {
             while (process_node != NULL) {
                 PCB* process = (PCB*) process_node->item;
                 if (process != NULL) {
-                    process->Turn = true;
+                    process->Turn = false;
                     if (process == os->INIT_PROCESS_PID){
-                        process->Turn = false;
+                        process->Turn = true;
                     }
                 }
                 process_node = process_node->next;
@@ -327,16 +329,15 @@ void send(OS* os, PCB* target_pid, char* msg) {
         return;
     }
 
-
-
     // Block sender, store message, and wait for reply
-    PCB *sender_process = os->running_process;
+    PCB* sender_process = os->running_process;
     sender_process->status = BLOCKED;
+    List_append(os->sendQueue, sender_process);
+    quantum(os, false, false);
 
     strcpy(target_pid->proc_message, msg);
     target_pid->sender_pid = sender_process;
     printf("Success: Message sent to process with PID %d: %s\n", target_pid, msg);
-
     printf("Waiting for reply...\n");
 }
 
@@ -358,24 +359,9 @@ void receive(OS *os) {
 }
 
 // Function to make a reply to a process and unblock the sender
-void reply(OS *os, PCB* reply_pid, char *reply_msg) {
+void reply(OS *os, char *reply_msg) {
     // Find the process to reply to
-    PCB *reply_process = NULL;
-    for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
-        List *queue = os->queues[i];
-        List_first(queue);
-        while (List_curr(queue) != NULL) {
-            PCB *process = (PCB *) List_curr(queue);
-            if (process == reply_pid) {
-                reply_process = process;
-                break;
-            }
-            List_next(queue);
-        }
-        if (reply_process != NULL) {
-            break;
-        }
-    }
+
 
     if (reply_process == NULL) {
         printf("Failure: Process with PID %d not found.\n", reply_pid);

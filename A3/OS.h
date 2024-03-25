@@ -43,7 +43,7 @@ void exitOS(OS *os);
 void quantum(OS *os, bool kill_process);
 void send(OS *os, PCB* target_pid, char *msg);
 void receive(OS *os);
-void reply(OS *os, PCB* reply_pid, char *reply_msg);
+void reply(OS *os, char *reply_msg);
 void semaphore(OS *os, int semaphore_id, int initial_value);
 void semaphore_P(OS *os, int semaphore_id);
 void semaphore_V(OS *os, int semaphore_id);
