@@ -22,16 +22,16 @@ void init(OS *os) {
     os->recvQueue = List_create();
 
     //initial process creation
-    PCB init_process;
-    init_process.priority = LOW; //This could be whatever
-    init_process.status = RUNNING;
-    init_process.Turn = true;
-    os->INIT_PROCESS_PID = &init_process;
-    os->running_process = &init_process;
+    PCB* init_process = (PCB*) malloc(sizeof(PCB));
+    init_process->priority = LOW; //This could be whatever
+    init_process->status = RUNNING;
+    init_process->Turn = true;
+    os->INIT_PROCESS_PID = init_process;
+    os->running_process = init_process;
     os->process_count = 1;
     os->INIT_PROCESS_PID->Turn = false;
-    List *init_queue = os->queues[init_process.priority];
-    List_append(init_queue, &init_process);
+    List *init_queue = os->queues[init_process->priority];
+    List_append(init_queue, init_process);
 
     printf("Success: Init process created with PID %p\n", &init_process);
 }
@@ -43,14 +43,14 @@ void create(OS *os, Priority priority) {
         return;
     }
 
-    PCB new_process;
-    new_process.priority = priority;
-    new_process.status = READY;
-    new_process.Turn = false;
+    PCB* new_process = (PCB*) malloc(sizeof(PCB));
+    new_process->priority = priority;
+    new_process->status = READY;
+    new_process->Turn = false;
 
     // Add the new process to the appropriate ready queue based on its priority
     List *ready_queue = os->queues[priority];
-    List_append(ready_queue, &new_process);
+    List_append(ready_queue, new_process);
 
     printf("Success: Process created with PID %p.\n", &new_process);
     os->process_count++;
@@ -73,14 +73,14 @@ void forkk(OS *os) {
         return;
     }
 
-    PCB new_process;
-    new_process.priority = current_process->priority;
-    new_process.status = READY;
-    new_process.Turn = false;
+    PCB* new_process = (PCB*) malloc(sizeof(PCB));
+    new_process->priority = current_process->priority;
+    new_process->status = READY;
+    new_process->Turn = false;
 
     // Add the new process to the appropriate ready queue based on its priority
-    List *ready_queue = os->queues[new_process.priority];
-    List_append(ready_queue, &new_process);
+    List *ready_queue = os->queues[new_process->priority];
+    List_append(ready_queue, new_process);
     os->process_count++;
 
     printf("Success: Process forked and added to the ready queue.\n");
@@ -93,7 +93,6 @@ void kill(OS *os, PCB* target_pid) {
         exit(EXIT_SUCCESS);
     }
     if (target_pid == os->running_process) {
-        printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
         quantum(os, false, true);
         return;
     }
@@ -107,7 +106,7 @@ void kill(OS *os, PCB* target_pid) {
             if (process == target_pid) {
                 // Found the process, remove it from the queue
                 List_remove(queue);
-                process->status = TERMINATED;
+                free(process);
                 printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
                 os->process_count--;
                 return;
@@ -124,7 +123,7 @@ void kill(OS *os, PCB* target_pid) {
             if (process == target_pid) {
                 // Found the process, remove it from the queue
                 List_remove(queue);
-                process->status = TERMINATED;
+                free(process);
                 printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
                 os->process_count--;
                 return;
@@ -140,7 +139,7 @@ void kill(OS *os, PCB* target_pid) {
         if (process == target_pid) {
             // Found the process, remove it from the queue
             List_remove(queue);
-            process->status = TERMINATED;
+            free(process);
             printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
             os->process_count--;
             return;
@@ -155,7 +154,7 @@ void kill(OS *os, PCB* target_pid) {
         if (process == target_pid) {
             // Found the process, remove it from the queue
             List_remove(queue);
-            process->status = TERMINATED;
+            free(process);
             printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
             os->process_count--;
             return;
@@ -173,13 +172,13 @@ void exitOS(OS *os) {
         exit(EXIT_SUCCESS);
     }
     
-    kill(os, os->running_process);
+    quantum(os, false, true);
 }
 
 // Function to handle the quantum expiry (time quantum of the running process)
 void quantum(OS *os, bool que, bool kill_process) {
     //kick off the running process
-    process = os->running_process;
+    PCB* process = os->running_process;
     process->Turn = false;
 
     if(que){ // ready queue the process
@@ -187,7 +186,7 @@ void quantum(OS *os, bool que, bool kill_process) {
     	process->status = READY;
     }
     else if(kill_process){
-    	process->status = TERMINATED;
+    	free(process);
     }
     else{	//process is in a blocked queue
     	process->status = BLOCKED;
@@ -197,7 +196,7 @@ void quantum(OS *os, bool que, bool kill_process) {
     
     if(os->process_count == 1){
     	os->running_process = os->INIT_PROCESS_PID;
-    	os->running_process->status = RUNNING
+    	os->running_process->status = RUNNING;
     	return;
     }
     
@@ -228,16 +227,16 @@ void quantum(OS *os, bool que, bool kill_process) {
     		List* queue = os->queues[i];
     		List_first(queue);
     		while(List_curr(queue)){
-    			(PCB*)List_curr(queue)->Turn = false;
+    			((PCB*)List_curr(queue))->Turn = false;
     			List_next(queue);
     		}
     	}
     
-    	os-INIT_PROCESS_PID->Turn = true;
+    	os->INIT_PROCESS_PID->Turn = true;
     }
     
     printf("ERROR: NO PROCESS ON CPU\n");
-    exit(EXIT_FALIURE);
+    exit(EXIT_FAILURE);
     return;
 
 }
@@ -547,9 +546,6 @@ void process_info(OS *os, PCB* pid) {
         }
         List_next(queue);
     }
-    if(pid == os->running_process){
-        target_process = os->running_process;
-    }
 
     if (target_process == NULL) {
         printf("Failure: Process with PID %x not found.\n", &pid);
@@ -722,7 +718,7 @@ int main() {
                 }
                 printf("Enter reply message (max 40 characters): ");
                 scanf("%s", reply_message);
-                reply(&os, reply_pid, reply_message);
+                reply(&os, reply_message);
                 break;
             }
             case 'N': {
