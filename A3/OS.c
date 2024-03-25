@@ -510,6 +510,7 @@ void process_info(OS *os, PCB* pid) {
             PCB *process = (PCB *) List_curr(queue);
             if (process == (PCB *) pid) {
                 target_process = process;
+                printf("This process was found in the ready queue with priority %d\n", i);
                 break;
             }
             List_next(queue);
@@ -527,6 +528,7 @@ void process_info(OS *os, PCB* pid) {
             PCB *process = (PCB *) List_curr(queue);
             if (process == (PCB *) pid) {
                 target_process = process;
+                printf("This process was found in the semaphore blocked queue\n");
                 break;
             }
             List_next(queue);
@@ -543,6 +545,7 @@ void process_info(OS *os, PCB* pid) {
         PCB *process = (PCB *) List_curr(queue);
         if (process == (PCB *) pid) {
             target_process = process;
+            printf("This process was found in the send blocked queue\n");
             break;
         }
         List_next(queue);
@@ -555,6 +558,7 @@ void process_info(OS *os, PCB* pid) {
         PCB *process = (PCB *) List_curr(queue);
         if (process == (PCB *) pid) {
             target_process = process;
+            printf("This process was found in the recieve blocked queue\n");
             break;
         }
         List_next(queue);
@@ -569,12 +573,6 @@ void process_info(OS *os, PCB* pid) {
     printf("Priority: %d\n", target_process->priority);
     printf("Status: ");
     switch (target_process->status) {
-        case READY:
-            printf("Ready\n");
-            break;
-        case BLOCKED:
-            printf("Blocked\n");
-            break;
         case RUNNING:
             printf("Running\n");
             break;
