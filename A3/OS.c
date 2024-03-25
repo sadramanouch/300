@@ -479,7 +479,7 @@ void semaphore_V(OS *os, int semaphore_id) {
     }
 
     // Increment the semaphore value
-    os->semaphores[semaphore_id]->value--;
+    os->semaphores[semaphore_id]->value++;
 
     // If there are processes waiting on this semaphore,
     // unblock the first waiting process and move it to the appropriate priority queue
@@ -510,7 +510,7 @@ void process_info(OS *os, PCB* pid) {
             PCB *process = (PCB *) List_curr(queue);
             if (process == (PCB *) pid) {
                 target_process = process;
-                printf("This process was found in the ready queue with priority %d\n", i);
+                printf("The process is in a ready queue.\n");
                 break;
             }
             List_next(queue);
@@ -528,7 +528,7 @@ void process_info(OS *os, PCB* pid) {
             PCB *process = (PCB *) List_curr(queue);
             if (process == (PCB *) pid) {
                 target_process = process;
-                printf("This process was found in the semaphore blocked queue\n");
+                printf("The process is blocked on semaphore %d.\n", i);
                 break;
             }
             List_next(queue);
@@ -545,7 +545,7 @@ void process_info(OS *os, PCB* pid) {
         PCB *process = (PCB *) List_curr(queue);
         if (process == (PCB *) pid) {
             target_process = process;
-            printf("This process was found in the send blocked queue\n");
+            printf("The process is blocked on a send operation.\n");
             break;
         }
         List_next(queue);
@@ -558,19 +558,34 @@ void process_info(OS *os, PCB* pid) {
         PCB *process = (PCB *) List_curr(queue);
         if (process == (PCB *) pid) {
             target_process = process;
-            printf("This process was found in the recieve blocked queue\n");
+            printf("The process is blocked on a received operation.\n");
             break;
         }
         List_next(queue);
     }
 
     if (target_process == NULL) {
-        printf("Failure: Process with PID %d not found.\n", &pid);
+        printf("Failure: Process with PID %x not found.\n", &pid);
         return;
     }
 
-    printf("Process Information for PID %d:\n", pid);
-    printf("Priority: %d\n", target_process->priority);
+    printf("Process Information for PID %x:\n", pid);
+    
+    printf("Priority: ");
+    switch(target_process->priority){
+        case HIGH:
+            printf("HIGH\n");
+            break;
+        case NORMAL:
+            printf("NORMAL\n");
+            break;
+        case LOW:
+            printf("LOW\n");
+            break;
+        default:
+            printf("Unknown\n");
+    }
+    
     printf("Status: ");
     switch (target_process->status) {
         case RUNNING:
@@ -578,6 +593,12 @@ void process_info(OS *os, PCB* pid) {
             break;
         case TERMINATED:
             printf("Terminated\n");
+            break;
+        case READY:
+            printf("Ready\n");
+            break;
+        case BLOCKED:
+            printf("Blocked\n");
             break;
         default:
             printf("Unknown\n");
