@@ -329,53 +329,96 @@ void send(OS* os, PCB* target_pid, char* msg) {
         return;
     }
 
-    // Block sender, store message, and wait for reply
+    // Block sender
     PCB* sender_process = os->running_process;
     sender_process->status = BLOCKED;
     List_append(os->sendQueue, sender_process);
     quantum(os, false, false);
 
+    //clear the proc_message
+    char emptystr[40];
+    strcpy(target_pid->proc_message, emptystr);
+
+    //send msg
     strcpy(target_pid->proc_message, msg);
     target_pid->sender_pid = sender_process;
     printf("Success: Message sent to process with PID %d: %s\n", target_pid, msg);
     printf("Waiting for reply...\n");
+
+    //if receiver is blocked in the recvQueue, unblock and put it in a ready queue
+    if (target_pid->status == BLOCKED) {
+        List* queue = os->recvQueue;
+        List_first(queue);
+        while (List_curr(queue) != NULL) {
+
+            PCB* process = (PCB*)List_curr(queue);
+            if (process == target_pid) {
+                List_remove(queue);
+                process->status = READY;
+                process->Turn = false;
+                List_append(os->queues[process->priority], process);
+                break;
+            }
+
+            List_next(queue);
+        }
+    }
 }
 
 // Function to receive a message and block until one arrives
 void receive(OS *os) {
-    // Assume the currently running process is receiving the message
-    PCB *receiver_process = os->running_process;
+
+    PCB* receiver_process = os->running_process;
 
     // Check if there's a message waiting for the receiver
-    if (strlen(receiver_process->proc_message) == 0) {
-        printf("No message available for the currently running process. Blocking until one arrives...\n");
-        //I am not sure how to block the process here but I beilive we have to use a conbination of semaphors
+    if (receiver_process->sender_pid) {
+        printf("Received message from %x: ", receiver_process->sender_pid);
+        puts(receiver_process->proc_message);
+    }
+    else { // Block and wait for a message
+        receiver_process->status = BLOCKED;
+        List_append(os->recvQueue, receiver_process);
+        quantum(os, false, false);
     }
 
-    printf("Received message from process with PID %d: %s\n", receiver_process->sender_pid, receiver_process->proc_message);
-    // Clear the message from the receiver process
-    receiver_process->sender_pid = 0;
-    receiver_process->proc_message[0] = '\0';
 }
 
 // Function to make a reply to a process and unblock the sender
-void reply(OS *os, char *reply_msg) {
-    // Find the process to reply to
+void reply(OS* os, char* reply_msg) {
 
-
-    if (reply_process == NULL) {
-        printf("Failure: Process with PID %d not found.\n", reply_pid);
+    PCB* reply_process = os->running_process;
+    PCB* sender = reply_process->sender_pid;
+    
+    if (!sender) {
+        printf("Faliure: no one sent you a message, therefore you cannot reply.\n");
         return;
     }
 
-    // Unblock the sender process
-    PCB *sender_process = os->running_process;
-    sender_process->status = READY;
+    // reply to the sender
+    char emptystr[40];
+    strcpy(sender->proc_message, emptystr);
+    strcpy(sender->proc_message, reply_msg);
+    sender->sender_pid = reply_process;
 
-    // Set the message in the reply process
-    strcpy(reply_process->proc_message, reply_msg);
+    //unblock the sender, add the sender to a ready queue
+    List* queue = os->sendQueue;
+    List_first(queue);
+    while (List_curr(queue) != NULL) {
 
-    printf("Success: Reply sent to process with PID %d.\n", reply_pid);
+        PCB* process = (PCB*)List_curr(queue);
+        if (process == sender) {
+            List_remove(queue);
+            process->status = READY;
+            process->Turn = false;
+            List_append(os->queues[process->priority], process);
+            break;
+        }
+
+        List_next(queue);
+    }
+
+    printf("Success: Reply sent to process with PID %d.\n", sender);
+    reply_process->sender_pid = NULL;
 }
 
 // Function to initialize a semaphore with the given ID and initial value

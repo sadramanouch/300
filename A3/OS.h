@@ -20,7 +20,7 @@ typedef struct PCB {
     Priority priority;
     Status status;
     char proc_message[MAX_MESSAGE_LENGTH];
-    struct PCB* sender_pid;
+    struct PCB* sender_pid = NULL;
     bool Turn;
 } PCB;
 
