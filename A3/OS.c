@@ -71,21 +71,16 @@ void create(OS *os, Priority priority) {
 
     if (os->process_count >= MAX_PROCESSES) {
         printf("Failure: Maximum number of processes reached.\n");
-        return -1;
-    }
-
-    PCB *new_process = (PCB *) malloc(sizeof(PCB));
-    if (new_process == NULL) {
-        printf("Failure: Memory allocation failed.\n");
         return;
     }
 
-    new_process->priority = LOW;
-    new_process->status = READY;
+    PCB new_process;
+    new_process.priority = priority;
+    new_process.status = READY;
 
     // Add the new process to the appropriate ready queue based on its priority
     List *ready_queue = os->queues[priority];
-    List_append(ready_queue, new_process);
+    List_append(ready_queue, &new_process);
 
     printf("Success: Process created with PID %p.\n", &new_process);
     os->process_count++;
@@ -94,7 +89,7 @@ void create(OS *os, Priority priority) {
 // Function to fork a process (create a copy) and add it to the ready queue
 void forkk(OS *os) {
     // Get the currently running process
-    PCB *current_process = os->running_process;
+    PCB* current_process = os->running_process;
 
     // Check if the current process is the init process
     if (current_process == os->INIT_PROCESS_PID) {
@@ -108,39 +103,39 @@ void forkk(OS *os) {
         return;
     }
 
-    PCB *new_process = (PCB *) malloc(sizeof(PCB));
-    if (new_process == NULL) {
-        printf("Failure: Memory allocation failed.\n");
-        return;
-    }
-
-    // Copy the current process to the new process
-    *new_process = *current_process;
-    new_process->status = READY;
+    PCB new_process;
+    new_process.priority = current_process->priority;
+    new_process.status = READY;
 
     // Add the new process to the appropriate ready queue based on its priority
     List *ready_queue = os->queues[new_process->priority];
     List_append(ready_queue, new_process);
+    os->process_count++;
 
     printf("Success: Process forked and added to the ready queue.\n");
-    os->process_count++;
 }
 
 // Function to kill the specified process and remove it from the system
 void kill(OS *os, PCB* target_pid) {
+    if (os->process_count == 1) {
+        printf("shutting down...\n");
+        exit(EXIT_SUCCESS);
+    }
+    if (target_pid == os->running_process) {
+        quantum()
+    }
+
     // Search for the process in all queues
     for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
         List *queue = os->queues[i];
         List_first(queue);
         while (List_curr(queue) != NULL) {
-            PCB *process = (PCB *) List_curr(queue);
+            PCB* process = (PCB*)List_curr(queue);
             if (process == target_pid) {
                 // Found the process, remove it from the queue
                 List_remove(queue);
-                free(process); // Free memory allocated for the process
                 printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
                 os->process_count--;
-                free(process);
                 return;
             }
             List_next(queue);
@@ -152,6 +147,11 @@ void kill(OS *os, PCB* target_pid) {
 
 // Function to exit the currently running process
 void exitOS(OS *os) {
+    if (os->process_count == 1) {
+        printf("shutting down...\n");
+        exit(EXIT_SUCCESS);
+    }
+
     // Find the currently running process
     PCB *current_process = os->running_process;
 
@@ -198,7 +198,7 @@ void exitOS(OS *os) {
 }
 
 // Function to handle the quantum expiry (time quantum of the running process)
-void quantum(OS *os) {
+void quantum(OS *os, bool kill_process) {
     //kick off current process
 
     //logic for choosing the process based on round robin
@@ -211,10 +211,12 @@ void quantum(OS *os) {
     Priority priority = os->running_process->priority;
 
     // Move the currently running process to the end of its priority queue
-    List *queue = os->queues[priority];
-    if (List_count(queue) == 0) {
-        printf("Error: The queue for the running process is empty.\n");
-        return;
+    if (kill_process == false) {
+        
+        if (List_count(queue) == 0) {
+            printf("Error: The queue for the running process is empty.\n");
+            return;
+        }
     }
 
     // Remove the currently running process from the front
@@ -227,6 +229,7 @@ void quantum(OS *os) {
     List_remove(queue);
 
     // Add the currently running process to the end of the queue
+    List *queue = os->queues[priority];
     int result = List_append(queue, os->running_process);
     if (result != 0) {
         printf("Error: Failed to append the process back to the queue.\n");
