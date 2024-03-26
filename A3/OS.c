@@ -13,6 +13,15 @@ void cleanup(OS* os) {
     free(os->INIT_PROCESS_PID);
 }
 
+int numReadyProcesses(OS* os) {
+    int count = 0;
+    for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
+        List* queue = os->queues[i];
+        count += List_count(queue);
+    }
+    return count;
+}
+
 void init(OS *os) {
     //Initialize the operating system
 
@@ -192,10 +201,13 @@ void exitOS(OS *os) {
 void quantum(OS *os, bool que, bool kill_process) {
     //kick off the running process
     PCB* process = os->running_process;
-    process->Turn = false;
-
+    puts("1");
+    if (process != os->INIT_PROCESS_PID) {
+        process->Turn = false;
+    }
+    puts("2");
     if(que){ // ready queue the process
-    	List_append(os->semaphore_wait_queues[process->priority], process);
+    	List_append(os->queues[process->priority], process);
     	process->status = READY;
     }
     else if(kill_process){
@@ -204,25 +216,27 @@ void quantum(OS *os, bool que, bool kill_process) {
     else{	//process is in a blocked queue
     	process->status = BLOCKED;
     }
-    
+    puts("3");
     //choose a new process to run
     
-    if(os->process_count == 1){
+    if(numReadyProcesses(os) == 1){
     	os->running_process = os->INIT_PROCESS_PID;
     	os->running_process->status = RUNNING;
     	return;
     }
-    
+    puts("4");
     PCB* next_process = NULL;
-    
+    puts("5");
     while (!next_process){
-        
+        puts("6");
         for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
             List* queue = os->queues[i];
-    	    List_first(queue);
+    	    List_last(queue);
+            puts("7");
     	    while(List_curr(queue)){
     		    PCB* new_process = List_curr(queue);
-    		    if (new_process && !new_process->Turn) {
+                puts("8");
+    		    if (new_process && new_process->Turn == false) {
     	    		List_remove(queue);
                 	next_process = new_process;
     	    		os->running_process = next_process;
@@ -239,20 +253,23 @@ void quantum(OS *os, bool que, bool kill_process) {
 
                     return;
                 }
-    	        List_next(queue);
+    	        List_prev(queue);
     	    }
             
         }
     
     	for(int i = 0; i< NUM_PROCESS_QUEUE_LEVELS; i++){
+            puts("9");
     		List* queue = os->queues[i];
     		List_first(queue);
     		while(List_curr(queue)){
-    			((PCB*)List_curr(queue))->Turn = false;
+                puts("A");
+    			PCB* curr_process = (PCB*)List_curr(queue);
+                curr_process->Turn = false;
     			List_next(queue);
     		}
     	}
-    
+        puts("B");
     	os->INIT_PROCESS_PID->Turn = true;
     }
     
