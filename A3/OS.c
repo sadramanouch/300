@@ -47,8 +47,6 @@ void init(OS *os) {
     os->running_process = init_process;
     os->process_count = 1;
     os->INIT_PROCESS_PID->Turn = false;
-    List *init_queue = os->queues[init_process->priority];
-    List_append(init_queue, init_process);
 
     printf("Success: Init process created with PID %p\n", init_process);
 }
@@ -208,13 +206,14 @@ void quantum(OS *os, Bool que, Bool kill_process) {
     }
     else if(kill_process){
     	free(process);
+        os->process_count--;
     }
     else{	//process is in a blocked queue
     	process->status = BLOCKED;
     }
 
     //choose a new process to run
-    
+
     if(numReadyProcesses(os) == 1){
     	os->running_process = os->INIT_PROCESS_PID;
     	os->running_process->status = RUNNING;
