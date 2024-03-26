@@ -631,7 +631,7 @@ void process_info(OS *os, PCB* pid) {
 
 // Function to display all process queues and their contents
 void total_info(OS *os) {
-    printf("Total Information:\n");
+    printf("OS PID's:\n");
 
     // Display information about processes in each queue
     for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
@@ -641,7 +641,7 @@ void total_info(OS *os) {
         List_first(queue);
         while (List_curr(queue) != NULL) {
             PCB *process = (PCB *) List_curr(queue);
-            process_info(os, process);
+            printf("-%p ,", (void *)process);
             List_next(queue);
         }
         printf("\n");
@@ -659,7 +659,7 @@ void total_info(OS *os) {
             List_first(wait_queue);
             while (List_curr(wait_queue) != NULL) {
                 PCB *process = (PCB *) List_curr(wait_queue);
-                printf("Process: %p\n", &process);
+                printf("-%p ,", (void *)process);
                 List_next(wait_queue);
             }
             printf("\n");
@@ -671,7 +671,7 @@ void total_info(OS *os) {
     List_first(os->sendQueue);
     while (List_curr(os->sendQueue) != NULL) {
         PCB *process = (PCB *) List_curr(os->sendQueue);
-        printf("Process: %p\n", &process);
+        printf("-%p ,", (void *)process);
         List_next(os->sendQueue);
     }
     printf("\n");
@@ -681,7 +681,7 @@ void total_info(OS *os) {
     List_first(os->recvQueue);
     while (List_curr(os->recvQueue) != NULL) {
         PCB *process = (PCB *) List_curr(os->recvQueue);
-        printf("Process: %p\n", &process);
+        printf("-%p ,", (void *)process);
         List_next(os->recvQueue);
     }
     printf("\n");
