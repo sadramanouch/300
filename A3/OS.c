@@ -216,6 +216,7 @@ void quantum(OS *os, Bool que, Bool kill_process) {
     }
     else if(kill_process){
     	free(process);
+        os->process_count--;
     }
     else{	//process is in a blocked queue
     	process->status = BLOCKED;
