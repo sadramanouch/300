@@ -26,6 +26,8 @@ typedef struct PCB {
     char proc_message[MAX_MESSAGE_LENGTH];
     struct PCB* sender_pid;
     Bool Turn;
+    Bool receiving;
+    Bool sending;
 } PCB;
 
 typedef struct OS {
@@ -40,6 +42,7 @@ typedef struct OS {
 } OS;
 
 void cleanup(OS* os);
+int numReadyProcesses(OS* os);
 void init(OS *os);
 void create(OS *os, Priority priority);
 void forkk(OS *os);
