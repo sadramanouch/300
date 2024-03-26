@@ -112,6 +112,10 @@ void kill(OS *os, PCB* target_pid) {
         cleanup(os);
         exit(EXIT_SUCCESS);
     }
+    if (target_pid == os->INIT_PROCESS_PID) {
+        printf("Cannot kill init process.\n");
+        return;
+    }
     if (target_pid == os->running_process) {
         quantum(os, false, true);
         return;
@@ -192,8 +196,12 @@ void exitOS(OS *os) {
         cleanup(os);
         exit(EXIT_SUCCESS);
     }
-    
-    quantum(os, false, true);
+    if (os->running_process != os->INIT_PROCESS_PID) {
+        quantum(os, false, true);
+    }
+    else {
+        printf("Cannot kill init process.\n");
+    }
 }
 
 // Function to handle the quantum expiry (time quantum of the running process)
