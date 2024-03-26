@@ -13,6 +13,7 @@ void cleanup(OS* os) {
 }
 
 int numReadyProcesses(OS* os) {
+    //This function gives us always the number of processes on the ready queue
     int count = 0;
     for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
         List* queue = os->queues[i];
@@ -35,7 +36,7 @@ void init(OS *os) {
     for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
         os->queues[i] = List_create();
     }
-
+    //creating the send and recieve blockes queues
     os->sendQueue = List_create();
     os->recvQueue = List_create();
 
@@ -55,12 +56,12 @@ void init(OS *os) {
 }
 
 void create(OS *os, Priority priority) {
-
+    //check so we do not go our of bounce
     if (os->process_count >= MAX_PROCESSES) {
         printf("Failure: Maximum number of processes reached.\n");
         return;
     }
-
+    //Initializing the new process
     PCB* new_process = (PCB*) malloc(sizeof(PCB));
     new_process->priority = priority;
     new_process->status = READY;
@@ -77,7 +78,6 @@ void create(OS *os, Priority priority) {
     os->process_count++;
 }
 
-// Function to fork a process (create a copy) and add it to the ready queue
 void forkk(OS *os) {
     // Get the currently running process
     PCB* current_process = os->running_process;
@@ -93,7 +93,7 @@ void forkk(OS *os) {
         printf("Failure: Maximum number of processes reached.\n");
         return;
     }
-
+    //Initializing the copied process
     PCB* new_process = (PCB*) malloc(sizeof(PCB));
     new_process->priority = current_process->priority;
     new_process->status = READY;
@@ -110,17 +110,19 @@ void forkk(OS *os) {
     printf("Success: New fork process with PID %p created.\n", new_process);
 }
 
-// Function to kill the specified process and remove it from the system
 void kill(OS *os, PCB* target_pid) {
+    //check if the only process is the INIT process
     if (os->process_count == 1) {
         printf("shutting down...\n");
         cleanup(os);
         exit(EXIT_SUCCESS);
     }
+    //edge case if we are trying to kill the INIT process without the process count being 1
     if (target_pid == os->INIT_PROCESS_PID) {
         printf("Cannot kill init process.\n");
         return;
     }
+    //Quantum with the bool being true so we free memory allocation and decrement count
     if (target_pid == os->running_process) {
         quantum(os, false, true);
         return;
@@ -194,7 +196,6 @@ void kill(OS *os, PCB* target_pid) {
     printf("Failure: Process with PID %p not found.\n", target_pid);
 }
 
-// Function to exit the currently running process
 void exitOS(OS *os) {
     if (os->process_count == 1) {
         printf("shutting down...\n");
@@ -209,99 +210,91 @@ void exitOS(OS *os) {
     }
 }
 
-// Function to handle the quantum expiry (time quantum of the running process)
 void quantum(OS *os, Bool que, Bool kill_process) {
-    //kick off the running process
+    // Kick off the running process
     PCB* process = os->running_process;
     process->Turn = true;
 
-    if(que){ // ready queue the process
-    	List_append(os->queues[process->priority], process);
-    	process->status = READY;
-    }
-    else if(kill_process){
-    	free(process);
+    if (que) { // Ready queue the process if que is true
+        List_append(os->queues[process->priority], process);
+        process->status = READY;
+    } else if (kill_process) { // Free the process if kill_process is true
+        free(process);
         os->process_count--;
-    }
-    else{	//process is in a blocked queue
-    	process->status = BLOCKED;
+    } else { // Process is in a blocked queue
+        process->status = BLOCKED;
     }
 
-    //choose a new process to run
+    // Choose a new process to run
     int vvv = numReadyProcesses(os);
-    if(vvv == 1){
+    if (vvv == 1) { // If there is only one ready process, switch to INIT_PROCESS_PID
         List_first(os->queues[LOW]);
         List_remove(os->queues[LOW]);
-    	os->running_process = os->INIT_PROCESS_PID;
-    	os->running_process->status = RUNNING;
+        os->running_process = os->INIT_PROCESS_PID;
+        os->running_process->status = RUNNING;
         printf("Success: The init process with pid %p is on the CPU.\n", os->running_process);
-    	return;
+        return;
     }
 
     PCB* next_process = NULL;
 
-    while (!next_process){
-
-        for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
+    while (!next_process) { // Loop until a next process is found
+        for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) { // Iterate over all process queue levels
             List* queue = os->queues[i];
-    	    List_first(queue);
 
-    	    while(List_curr(queue)){
-    		    PCB* new_process = List_curr(queue);
+            while (List_curr(queue)) { // Loop through each process in the queue
+                PCB* new_process = List_curr(queue);
 
-    		    if (new_process && new_process->Turn == false) {
-    	    		List_remove(queue);
-                	next_process = new_process;
-    	    		os->running_process = next_process;
-    	    		next_process->status = RUNNING;
-    	    		next_process->Turn = true;
-    			    printf("Success: process with PID %p is on the CPU.\n", next_process);
+                if (new_process && new_process->Turn == false) { // If it's the process's turn
+                    List_remove(queue);
+                    next_process = new_process;
+                    os->running_process = next_process;
+                    next_process->status = RUNNING;
+                    next_process->Turn = true;
+                    printf("Success: Process with PID %p is on the CPU.\n", next_process);
 
-                    // check if process was waiting on a receive and received
-                    if (next_process->receiving && next_process->sender_pid && next_process->proc_message[0] != 0) { 
+                    // Handle message reception
+                    if (next_process->receiving && next_process->sender_pid && next_process->proc_message[0] != 0) {
                         printf("Received message from %p: ", next_process->sender_pid);
                         puts(next_process->proc_message);
                         next_process->receiving = false;
-                        //clear the message
-                        memset(next_process->proc_message, 0, MAX_MESSAGE_LENGTH);
+                        memset(next_process->proc_message, 0, MAX_MESSAGE_LENGTH); // Clear message
                     }
 
-                    //check if process was waiting on a send an got a reply
+                    // Handle message reply
                     if (next_process->sending && next_process->sender_pid && next_process->proc_message[0] != 0) {
                         printf("Reply received from %p: ", next_process->sender_pid);
                         puts(next_process->proc_message);
                         next_process->sending = false;
                         next_process->sender_pid = NULL;
-                        //clear the message
-                        memset(next_process->proc_message, 0, MAX_MESSAGE_LENGTH);
+                        memset(next_process->proc_message, 0, MAX_MESSAGE_LENGTH); // Clear message
                     }
 
                     return;
                 }
-    	        List_next(queue);
-    	    }
-            
+                List_next(queue);
+            }
         }
-    
-    	for(int i = 0; i< NUM_PROCESS_QUEUE_LEVELS; i++){
-    		List* queue = os->queues[i];
-    		List_first(queue);
-    		while(List_curr(queue)){
-    			PCB* curr_process = (PCB*)List_curr(queue);
+
+        // Reset turn flags for all processes
+        for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
+            List* queue = os->queues[i];
+            List_first(queue);
+
+            while (List_curr(queue)) {
+                PCB* curr_process = (PCB*)List_curr(queue);
                 curr_process->Turn = false;
-    			List_next(queue);
-    		}
-    	}
-    	os->INIT_PROCESS_PID->Turn = true;
+                List_next(queue);
+            }
+        }
+        os->INIT_PROCESS_PID->Turn = true;
     }
-    
+
     printf("ERROR: NO PROCESS ON CPU\n");
     exit(EXIT_FAILURE);
     return;
-
 }
 
-// Function to send a message to another process and block until a reply is received
 void send(OS* os, PCB* target_pid, char* msg) {
     //init process cannot send
     if (os->running_process == os->INIT_PROCESS_PID) {
@@ -415,7 +408,6 @@ void send(OS* os, PCB* target_pid, char* msg) {
     }
 }
 
-// Function to receive a message and block until one arrives
 void receive(OS *os) {
 
     PCB* receiver_process = os->running_process;
@@ -440,12 +432,13 @@ void receive(OS *os) {
 
 }
 
-// Function to make a reply to a process and unblock the sender
 void reply(OS* os, char* reply_msg) {
 
+    // Get the reply process and its sender
     PCB* reply_process = os->running_process;
     PCB* sender = reply_process->sender_pid;
     
+    // Check if there's a sender
     if (!sender) {
         printf("Faliure: no one sent you a message, therefore you cannot reply.\n");
         return;
@@ -477,26 +470,30 @@ void reply(OS* os, char* reply_msg) {
     reply_process->sender_pid = NULL;
 }
 
-// Function to initialize a semaphore with the given ID and initial value
 void semaphore(OS *os, int semaphore_id, int initial_value) {
+    // Check if semaphore ID is valid
     if (semaphore_id < 0 || semaphore_id >= MAX_SEMAPHORES) {
         printf("Failure: Invalid semaphore ID. It should be in the range [0, 4].\n");
         return;
     }
 
+    // Access the semaphore with the given ID
     Sem* sem = os->semaphores[semaphore_id];
     sem->exists = false;
+
+    // Initialize the semaphore with the given initial value
     if (sem->exists == false) {
         sem->exists = true;
         sem->value = initial_value;        
         printf("Success: Semaphore %d initialized with initial value %d.\n", semaphore_id, initial_value);
     }
+
+    // if semaphore already exists
     else {
         printf("Faliure: semaphore already exists!\n");
     }
 }
 
-// Function to perform the P operation on a semaphore
 void semaphore_P(OS *os, int semaphore_id) {
     // Check if semaphore_id is within valid range
     if (semaphore_id < 0 || semaphore_id >= MAX_SEMAPHORES || os->semaphores[semaphore_id]->exists == false){
@@ -504,21 +501,26 @@ void semaphore_P(OS *os, int semaphore_id) {
         return;
     }
 
+    // Access the semaphore with the given ID
     Sem* sem = os->semaphores[semaphore_id];
 
-    if (sem->value > 0) { //decrement the semaphore
+    // If semaphore value is greater than 0, decrement the semaphore
+    if (sem->value > 0) { 
         sem->value--;
         printf("Success: process not blocked.\n");
     }
 
-    else if (sem->value == 0) { //block the process
+    // If semaphore value is 0, block the process
+    else if (sem->value == 0) { 
         PCB* current_process = os->running_process;
+        // Check if the current process is the init process
         if (current_process == os->INIT_PROCESS_PID) { //do not block
             printf("Faliure: init process cannot be blocked.\n");
             return;
         }
+        // Set the status of the current process to BLOCKED
         current_process->status = BLOCKED;
-
+        // Add the current process to the wait queue associated with the semaphore
         List* wait_queue = os->semaphore_wait_queues[semaphore_id];
         List_append(wait_queue, current_process);
         printf("Success: process %p blocked on semaphore %d.\n", current_process, semaphore_id);
@@ -527,7 +529,6 @@ void semaphore_P(OS *os, int semaphore_id) {
     }
 }
 
-// Function to perform the V operation on a semaphore
 void semaphore_V(OS *os, int semaphore_id) {
     // Check if the semaphore ID is valid
     if (semaphore_id < 0 || semaphore_id >= MAX_SEMAPHORES || os->semaphores[semaphore_id]->exists == false){
@@ -556,7 +557,6 @@ void semaphore_V(OS *os, int semaphore_id) {
     }
 }
 
-// Function to display complete state information of a process
 void process_info(OS *os, PCB* pid) {
     // Find the process with the given PID
     PCB *target_process = NULL;
@@ -665,7 +665,6 @@ void process_info(OS *os, PCB* pid) {
 
 }
 
-// Function to display all process queues and their contents
 void total_info(OS *os) {
     printf("\nRunning Process: %p\n", os->running_process);
     printf("\nReady Queues:\n");
@@ -733,6 +732,7 @@ int main() {
         printf("\nEnter a command (C, F, K, E, Q, S, R, Y, N, P, V, I, T): ");
         scanf(" %c", &command);
 
+        //check every case of input from the user
         switch (command) {
             case 'C': {
                 int priority;
@@ -841,7 +841,7 @@ int main() {
             default:
                 printf("Invalid command. Try again.\n");
         }
-
+    //Do this while there exists a process on the system
     } while (os.process_count > 0);
 
     return 0;
