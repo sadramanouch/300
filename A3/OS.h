@@ -8,11 +8,15 @@
 #define MAX_SEMAPHORES 5
 #define NUM_PROCESS_QUEUE_LEVELS 3
 
+#define Bool int
+#define true 1
+#define false 0
+
 typedef enum { HIGH, NORMAL, LOW } Priority;
 typedef enum { READY, BLOCKED, RUNNING, TERMINATED } Status;
 
 typedef struct Sem {
-    bool exists;
+    Bool exists;
     int value;
 } Sem;
 
@@ -21,7 +25,7 @@ typedef struct PCB {
     Status status;
     char proc_message[MAX_MESSAGE_LENGTH];
     struct PCB* sender_pid;
-    bool Turn;
+    Bool Turn;
 } PCB;
 
 typedef struct OS {
@@ -41,7 +45,7 @@ void create(OS *os, Priority priority);
 void forkk(OS *os);
 void kill(OS *os, PCB* target_pid);
 void exitOS(OS *os);
-void quantum(OS *os, bool que, bool kill_process);
+void quantum(OS *os, Bool que, Bool kill_process);
 void send(OS *os, PCB* target_pid, char *msg);
 void receive(OS *os);
 void reply(OS *os, char *reply_msg);

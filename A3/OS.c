@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <stdbool.h>
 #include "OS.h"
 
 void cleanup(OS* os) {
@@ -198,14 +197,11 @@ void exitOS(OS *os) {
 }
 
 // Function to handle the quantum expiry (time quantum of the running process)
-void quantum(OS *os, bool que, bool kill_process) {
+void quantum(OS *os, Bool que, Bool kill_process) {
     //kick off the running process
     PCB* process = os->running_process;
-    puts("1");
-    if (process != os->INIT_PROCESS_PID) {
-        process->Turn = false;
-    }
-    puts("2");
+    process->Turn = true;
+
     if(que){ // ready queue the process
     	List_append(os->queues[process->priority], process);
     	process->status = READY;
@@ -216,7 +212,7 @@ void quantum(OS *os, bool que, bool kill_process) {
     else{	//process is in a blocked queue
     	process->status = BLOCKED;
     }
-    puts("3");
+
     //choose a new process to run
     
     if(numReadyProcesses(os) == 1){
@@ -224,18 +220,18 @@ void quantum(OS *os, bool que, bool kill_process) {
     	os->running_process->status = RUNNING;
     	return;
     }
-    puts("4");
+
     PCB* next_process = NULL;
-    puts("5");
+
     while (!next_process){
-        puts("6");
+
         for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
             List* queue = os->queues[i];
-    	    List_last(queue);
-            puts("7");
+    	    List_first(queue);
+
     	    while(List_curr(queue)){
     		    PCB* new_process = List_curr(queue);
-                puts("8");
+
     		    if (new_process && new_process->Turn == false) {
     	    		List_remove(queue);
                 	next_process = new_process;
@@ -253,23 +249,20 @@ void quantum(OS *os, bool que, bool kill_process) {
 
                     return;
                 }
-    	        List_prev(queue);
+    	        List_next(queue);
     	    }
             
         }
     
     	for(int i = 0; i< NUM_PROCESS_QUEUE_LEVELS; i++){
-            puts("9");
     		List* queue = os->queues[i];
     		List_first(queue);
     		while(List_curr(queue)){
-                puts("A");
     			PCB* curr_process = (PCB*)List_curr(queue);
                 curr_process->Turn = false;
     			List_next(queue);
     		}
     	}
-        puts("B");
     	os->INIT_PROCESS_PID->Turn = true;
     }
     
@@ -288,7 +281,7 @@ void send(OS* os, PCB* target_pid, char* msg) {
     }
 
     //make sure the target process exists
-    bool exists = false;
+    Bool exists = false;
     //check ready queues
     for (int i = 0; i < NUM_PROCESS_QUEUE_LEVELS; i++) {
         List* queue = os->queues[i];
