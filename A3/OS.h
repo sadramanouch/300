@@ -20,7 +20,7 @@ typedef struct PCB {
     Priority priority;
     Status status;
     char proc_message[MAX_MESSAGE_LENGTH];
-    struct PCB* sender_pid = NULL;
+    struct PCB* sender_pid;
     bool Turn;
 } PCB;
 
@@ -35,6 +35,7 @@ typedef struct OS {
     List* semaphore_wait_queues[MAX_SEMAPHORES];
 } OS;
 
+void cleanup(OS* os);
 void init(OS *os);
 void create(OS *os, Priority priority);
 void forkk(OS *os);

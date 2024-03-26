@@ -5,11 +5,19 @@
 #include <stdbool.h>
 #include "OS.h"
 
+void cleanup(OS* os) {
+    for (int i = 0; i < MAX_SEMAPHORES; i++) {
+        free(os->semaphores[i]);
+    }
+
+    free(os->INIT_PROCESS_PID);
+}
+
 void init(OS *os) {
     //Initialize the operating system
 
     for (int i = 0; i < MAX_SEMAPHORES; i++) {
-        Sem* newSem;
+        Sem* newSem = (Sem*) malloc(sizeof(Sem));
         os->semaphores[i] = newSem;
         os->semaphore_wait_queues[i] = List_create();
     }
@@ -26,6 +34,7 @@ void init(OS *os) {
     init_process->priority = LOW; //This could be whatever
     init_process->status = RUNNING;
     init_process->Turn = true;
+    init_process->sender_pid = NULL;
     os->INIT_PROCESS_PID = init_process;
     os->running_process = init_process;
     os->process_count = 1;
@@ -33,7 +42,7 @@ void init(OS *os) {
     List *init_queue = os->queues[init_process->priority];
     List_append(init_queue, init_process);
 
-    printf("Success: Init process created with PID %p\n", &init_process);
+    printf("Success: Init process created with PID %p\n", init_process);
 }
 
 void create(OS *os, Priority priority) {
@@ -47,12 +56,13 @@ void create(OS *os, Priority priority) {
     new_process->priority = priority;
     new_process->status = READY;
     new_process->Turn = false;
+    new_process->sender_pid = NULL;
 
     // Add the new process to the appropriate ready queue based on its priority
     List *ready_queue = os->queues[priority];
     List_append(ready_queue, new_process);
 
-    printf("Success: Process created with PID %p.\n", &new_process);
+    printf("Success: Process created with PID %p.\n", new_process);
     os->process_count++;
 }
 
@@ -77,6 +87,7 @@ void forkk(OS *os) {
     new_process->priority = current_process->priority;
     new_process->status = READY;
     new_process->Turn = false;
+    new_process->sender_pid = NULL;
 
     // Add the new process to the appropriate ready queue based on its priority
     List *ready_queue = os->queues[new_process->priority];
@@ -90,6 +101,7 @@ void forkk(OS *os) {
 void kill(OS *os, PCB* target_pid) {
     if (os->process_count == 1) {
         printf("shutting down...\n");
+        cleanup(os);
         exit(EXIT_SUCCESS);
     }
     if (target_pid == os->running_process) {
@@ -107,7 +119,7 @@ void kill(OS *os, PCB* target_pid) {
                 // Found the process, remove it from the queue
                 List_remove(queue);
                 free(process);
-                printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
+                printf("Success: Process with PID %p killed and removed from the system.\n", target_pid);
                 os->process_count--;
                 return;
             }
@@ -124,7 +136,7 @@ void kill(OS *os, PCB* target_pid) {
                 // Found the process, remove it from the queue
                 List_remove(queue);
                 free(process);
-                printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
+                printf("Success: Process with PID %p killed and removed from the system.\n", target_pid);
                 os->process_count--;
                 return;
             }
@@ -140,14 +152,14 @@ void kill(OS *os, PCB* target_pid) {
             // Found the process, remove it from the queue
             List_remove(queue);
             free(process);
-            printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
+            printf("Success: Process with PID %p killed and removed from the system.\n", target_pid);
             os->process_count--;
             return;
         }
         List_next(queue);
     }
     //recv queue
-    List* queue = os->recvQueue;
+    queue = os->recvQueue;
     List_first(queue);
     while (List_curr(queue) != NULL) {
         PCB* process = (PCB*)List_curr(queue);
@@ -155,20 +167,21 @@ void kill(OS *os, PCB* target_pid) {
             // Found the process, remove it from the queue
             List_remove(queue);
             free(process);
-            printf("Success: Process with PID %x killed and removed from the system.\n", &target_pid);
+            printf("Success: Process with PID %p killed and removed from the system.\n", target_pid);
             os->process_count--;
             return;
         }
         List_next(queue);
     }
     // Process not found
-    printf("Failure: Process with PID %x not found.\n", &target_pid);
+    printf("Failure: Process with PID %p not found.\n", target_pid);
 }
 
 // Function to exit the currently running process
 void exitOS(OS *os) {
     if (os->process_count == 1) {
         printf("shutting down...\n");
+        cleanup(os);
         exit(EXIT_SUCCESS);
     }
     
@@ -215,7 +228,15 @@ void quantum(OS *os, bool que, bool kill_process) {
     	    		os->running_process = next_process;
     	    		next_process->status = RUNNING;
     	    		next_process->Turn = true;
-    			    printf("Success: process with PID %x is on the CPU.\n", next_process);
+    			    printf("Success: process with PID %p is on the CPU.\n", next_process);
+                    
+                    if (next_process->sender_pid && next_process->proc_message[0] != 0) { // process was waiting on a receive and received
+                        printf("Received message from %p: ", next_process->sender_pid);
+                        puts(next_process->proc_message);
+                        //clear the message
+                        memset(next_process->proc_message, 0, MAX_MESSAGE_LENGTH);
+                    }
+
                     return;
                 }
     	        List_next(queue);
@@ -295,7 +316,7 @@ void send(OS* os, PCB* target_pid, char* msg) {
         List_next(queue);
     }
     //check recv queue
-    List* queue = os->recvQueue;
+    queue = os->recvQueue;
     List_first(queue);
     while (List_curr(queue) != NULL) {
 
@@ -319,13 +340,13 @@ void send(OS* os, PCB* target_pid, char* msg) {
     quantum(os, false, false);
 
     //clear the proc_message
-    char emptystr[40];
-    strcpy(target_pid->proc_message, emptystr);
+    memset(target_pid->proc_message, 0, MAX_MESSAGE_LENGTH);
 
     //send msg
     strcpy(target_pid->proc_message, msg);
     target_pid->sender_pid = sender_process;
-    printf("Success: Message sent to process with PID %d: %s\n", target_pid, msg);
+    printf("Success: Message sent to process with PID %p:\n", target_pid);
+    puts(msg);
     printf("Waiting for reply...\n");
 
     //if receiver is blocked in the recvQueue, unblock and put it in a ready queue
@@ -354,11 +375,14 @@ void receive(OS *os) {
     PCB* receiver_process = os->running_process;
 
     // Check if there's a message waiting for the receiver
-    if (receiver_process->sender_pid) {
-        printf("Received message from %x: ", receiver_process->sender_pid);
+    if (receiver_process->sender_pid && receiver_process->proc_message[0] != 0) {
+        printf("Received message from %p: ", receiver_process->sender_pid);
         puts(receiver_process->proc_message);
+        //clear the message
+        memset(receiver_process->proc_message, 0, MAX_MESSAGE_LENGTH);
     }
     else { // Block and wait for a message
+        printf("No one has sent you a message, blocking process and waiting for a message.\n");
         receiver_process->status = BLOCKED;
         List_append(os->recvQueue, receiver_process);
         quantum(os, false, false);
@@ -378,8 +402,7 @@ void reply(OS* os, char* reply_msg) {
     }
 
     // reply to the sender
-    char emptystr[40];
-    strcpy(sender->proc_message, emptystr);
+    memset(sender->proc_message, 0, MAX_MESSAGE_LENGTH);
     strcpy(sender->proc_message, reply_msg);
     sender->sender_pid = reply_process;
 
@@ -400,7 +423,7 @@ void reply(OS* os, char* reply_msg) {
         List_next(queue);
     }
 
-    printf("Success: Reply sent to process with PID %d.\n", sender);
+    printf("Success: Reply sent to process with PID %p.\n", sender);
     reply_process->sender_pid = NULL;
 }
 
@@ -475,7 +498,7 @@ void semaphore_V(OS *os, int semaphore_id) {
         List* priority_queue = os->queues[process->priority];
         List_append(priority_queue, process);
 
-        printf("Success: Process with PID %x readied.\n", process);
+        printf("Success: Process with PID %p readied.\n", process);
     }
     else {
         printf("Success: no process readied.\n");
@@ -535,7 +558,7 @@ void process_info(OS *os, PCB* pid) {
     }
 
     //recv queue
-    List* queue = os->recvQueue;
+    queue = os->recvQueue;
     List_first(queue);
     while (List_curr(queue) != NULL) {
         PCB *process = (PCB *) List_curr(queue);
@@ -548,11 +571,11 @@ void process_info(OS *os, PCB* pid) {
     }
 
     if (target_process == NULL) {
-        printf("Failure: Process with PID %x not found.\n", &pid);
+        printf("Failure: Process with PID %p not found.\n", &pid);
         return;
     }
 
-    printf("Process Information for PID %x:\n", pid);
+    printf("Process Information for PID %p:\n", pid);
     
     printf("Priority: ");
     switch(target_process->priority){
@@ -586,7 +609,7 @@ void process_info(OS *os, PCB* pid) {
         default:
             printf("Unknown\n");
     }
-    printf("Message: %s\n", target_process->proc_message);
+
 }
 
 // Function to display all process queues and their contents
@@ -601,7 +624,7 @@ void total_info(OS *os) {
         List_first(queue);
         while (List_curr(queue) != NULL) {
             PCB *process = (PCB *) List_curr(queue);
-            process_info(&os, process);
+            process_info(os, process);
             List_next(queue);
         }
         printf("\n");
@@ -676,8 +699,8 @@ int main() {
             case 'K': {
                 PCB* pid;
                 printf("Enter PID of the process to be killed: ");
-                while (scanf("%x", &pid) != 1) {
-                    printf("Invalid input. Please enter a valid integer PID: ");
+                while (scanf("%p", &pid) != 1) {
+                    printf("Invalid input. Please enter a valid PID: ");
                     while (getchar() != '\n'); // Clear input buffer
                 }
                 kill(&os, pid);
@@ -695,8 +718,8 @@ int main() {
                 PCB* target_pid;
                 char message[MAX_MESSAGE_LENGTH];
                 printf("Enter PID of the process to send message to: ");
-                while (scanf("%d", &target_pid) != 1) {
-                    printf("Invalid input. Please enter a valid integer PID: ");
+                while (scanf("%p", &target_pid) != 1) {
+                    printf("Invalid input. Please enter a valid PID: ");
                     while (getchar() != '\n'); // Clear input buffer
                 }
                 printf("Enter message (max 40 characters): ");
@@ -712,8 +735,8 @@ int main() {
                 PCB* reply_pid;
                 char reply_message[MAX_MESSAGE_LENGTH];
                 printf("Enter PID of the process to make the reply to: ");
-                while (scanf("%x", &reply_pid) != 1) {
-                    printf("Invalid input. Please enter a valid integer PID: ");
+                while (scanf("%p", &reply_pid) != 1) {
+                    printf("Invalid input. Please enter a valid PID: ");
                     while (getchar() != '\n'); // Clear input buffer
                 }
                 printf("Enter reply message (max 40 characters): ");
@@ -759,7 +782,7 @@ int main() {
             case 'I': {
                 PCB* pid;
                 printf("Enter PID of the process for which information is to be returned: ");
-                while (scanf("%x", &pid) != 1) {
+                while (scanf("%p", &pid) != 1) {
                     printf("Invalid input. Please enter a valid integer PID: ");
                     while (getchar() != '\n'); // Clear input buffer
                 }
@@ -767,7 +790,7 @@ int main() {
                 break;
             }
             case 'T':
-                printf("Displaying all process queues and their contents...\n");
+                printf("Total Info:\n");
                 total_info(&os);
                 break;
             default:
